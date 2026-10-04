@@ -1,6 +1,6 @@
 class ApiConfig {
-  // Production Azure Backend URL (or Localhost if testing on emulator)
-  static const String baseUrl = 'https://fin-family.app/api';
+  // Live Vercel Backend URL
+  static const String baseUrl = 'https://finfamily-backend.vercel.app/api';
   
   // Timeout settings
   static const Duration connectTimeout = Duration(seconds: 15);
