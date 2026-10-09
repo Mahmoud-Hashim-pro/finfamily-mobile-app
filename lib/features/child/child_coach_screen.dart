@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../config/theme.dart';
+import '../../core/api_client.dart';
+import '../../config/api_config.dart';
+import '../../core/error_handler.dart';
 
 class ChildCoachScreen extends StatefulWidget {
   const ChildCoachScreen({super.key});
@@ -26,7 +29,7 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
     'يعني إيه كارت ميزة؟ 💳',
   ];
 
-  void _ask(String question) {
+  Future<void> _ask(String question) async {
     if (question.trim().isEmpty) return;
     setState(() {
       _messages.add({'role': 'user', 'text': question.trim()});
@@ -34,29 +37,37 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
     });
     _controller.clear();
 
-    Future.delayed(const Duration(milliseconds: 700), () {
-      String answer;
-      if (question.contains('عجلة') || question.contains('أحوش')) {
-        answer =
-            'عشان تشتري العجلة بسرعة: 1️⃣ أنجز كل المهام اليومية في التطبيق. 2️⃣ اطلب من بابا يفعّل ميزة "مطابقة التحويش"، يعني كل 10 جنيه تحوشها يزودلك عليها مكافأة! 🚀';
-      } else if (question.contains('الحاجة') || question.contains('الرغبة')) {
-        answer =
-            'الحاجة = أكل، شرب، كتب المدرسة (حاجات من غيرها منقدرش نعيش). أما الرغبة = لعبة جديدة، شيبسي، كاندي (حاجات حلوة بس ممكن نأجلها عشان نحوش للأهم)! 💡';
-      } else {
-        answer =
-            'كارت ميزة هو كارتك البنكي الذكي الخاص بيك! بابا بيحطلك فيه المصروف، وتقدر تشتري بيه من السوبرماركت وكانتين المدرسة بدون ما تشيل كاش يضيع منك 💳✨';
-      }
-
+    try {
+      final res = await ApiClient().post(
+        ApiConfig.aiCoach,
+        data: {'message': question.trim()},
+      );
+      final reply = res.data['reply'] ??
+          res.data['response'] ??
+          'أنا هنا لمساعدتك دائماً يا بطل! 🌟';
       setState(() {
-        _messages.add({'role': 'bot', 'text': answer});
+        _messages.add({'role': 'bot', 'text': reply});
         _isTyping = false;
       });
+    } catch (e) {
+      final errMsg = ApiErrorHandler.getErrorMessage(e);
+      setState(() {
+        _messages.add({
+          'role': 'bot',
+          'text': 'عذراً يا بطل! تعذر الاتصال بـ فطين: $errMsg 🤖',
+        });
+        _isTyping = false;
+      });
+    }
 
-      _scroll.animateTo(
-        _scroll.position.maxScrollExtent + 80,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent + 80,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 

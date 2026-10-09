@@ -3,8 +3,8 @@ class ApiConfig {
   static const String baseUrl = 'https://finfamily-backend.vercel.app/api';
   
   // Timeout settings
-  static const Duration connectTimeout = Duration(seconds: 15);
-  static const Duration receiveTimeout = Duration(seconds: 15);
+  static const Duration connectTimeout = Duration(seconds: 30);
+  static const Duration receiveTimeout = Duration(seconds: 30);
 
   // Auth endpoints
   static const String parentRegister = '/auth/register';
@@ -12,6 +12,9 @@ class ApiConfig {
   static const String childLogin = '/auth/child/login';
   static const String childLookup = '/auth/child/lookup';
   static const String currentUser = '/auth/me';
+  static const String familyCode = '/auth/family/code';
+  static const String familyChildren = '/auth/family/children';
+  static const String createChild = '/auth/children';
   static const String mfaSetup = '/auth/mfa/setup';
   static const String mfaEnable = '/auth/mfa/enable';
   static const String mfaVerify = '/auth/mfa/verify';
@@ -33,5 +36,5 @@ class ApiConfig {
   static const String missions = '/family/missions';
   static const String goals = '/family/goals';
   static const String transactions = '/family/transactions';
-  static const String aiCoach = '/functions/parent_coach';
+  static const String aiCoach = '/functions/aiCoach';
 }

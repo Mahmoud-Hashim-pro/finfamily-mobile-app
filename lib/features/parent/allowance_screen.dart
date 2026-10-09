@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../../config/theme.dart';
 import '../../core/api_client.dart';
 import '../../config/api_config.dart';
+import '../../core/error_handler.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
+import 'family_members_screen.dart';
 
 class AllowanceScreen extends StatefulWidget {
   const AllowanceScreen({super.key});
@@ -16,17 +18,39 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
   final _amountController = TextEditingController();
   final _noteController = TextEditingController();
   String? _selectedChildId;
-  bool _isLoading = false;
-
-  final List<Map<String, dynamic>> _children = [
-    {'id': 'c1', 'name': 'لطفي', 'avatar': '👦', 'current': 320.5},
-    {'id': 'c2', 'name': 'سارة', 'avatar': '👧', 'current': 480.0},
-  ];
+  bool _isLoading = true;
+  bool _isSending = false;
+  String? _errorMessage;
+  List<dynamic> _children = [];
 
   @override
   void initState() {
     super.initState();
-    _selectedChildId = _children.first['id'];
+    _loadChildren();
+  }
+
+  Future<void> _loadChildren() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final res = await ApiClient().get(ApiConfig.familyOverview);
+      final raw = (res.data['children'] as List<dynamic>?) ?? [];
+      setState(() {
+        _children = raw;
+        if (_children.isNotEmpty) {
+          _selectedChildId = _children.first['id']?.toString();
+        }
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = ApiErrorHandler.getErrorMessage(e);
+      });
+    }
   }
 
   @override
@@ -48,32 +72,51 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
-
-    try {
-      await ApiClient().post(
-        ApiConfig.instantAllowance,
-        data: {
-          'child_id': _selectedChildId,
-          'amount': amount,
-          'note': _noteController.text.trim(),
-        },
+    if (_selectedChildId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('يرجى اختيار الطفل المستلم'),
+          backgroundColor: AppTheme.coral,
+        ),
       );
-    } catch (_) {
-      // Mock success for offline/demo
+      return;
     }
 
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-    _amountController.clear();
-    _noteController.clear();
+    setState(() => _isSending = true);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('تم تحويل $amount ج.م بنجاح إلى المحفظة! 🎉'),
-        backgroundColor: AppTheme.emerald,
-      ),
-    );
+    try {
+      final note = _noteController.text.trim();
+      await ApiClient().post(
+        '/wallet/child/$_selectedChildId/allowance',
+        data: {
+          'amount': amount,
+          'label': note.isNotEmpty ? note : 'المصروف',
+        },
+      );
+
+      if (!mounted) return;
+      setState(() => _isSending = false);
+      _amountController.clear();
+      _noteController.clear();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم تحويل $amount ج.م بنجاح إلى المحفظة! 🎉'),
+          backgroundColor: AppTheme.emerald,
+        ),
+      );
+
+      _loadChildren();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSending = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ApiErrorHandler.getErrorMessage(e)),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
+    }
   }
 
   @override
@@ -84,158 +127,269 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
         title: const Text('إرسال المصروف (Allowance)'),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header Card
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0F2D52), Color(0xFF1E3A8A)],
-                  ),
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: const Row(
-                  children: [
-                    Text('💸', style: TextStyle(fontSize: 40)),
-                    SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'المصروف الفوري والذكي',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'حوّل المصروف بضغطة زر وينزل فوراً في كارت ميزة ومحفظة طفلك.',
-                            style: TextStyle(color: Colors.white70, fontSize: 12),
-                          ),
-                        ],
-                      ),
+        child: RefreshIndicator(
+          onRefresh: _loadChildren,
+          color: AppTheme.navy,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header Card
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0F2D52), Color(0xFF1E3A8A)],
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              const Text(
-                'اختر الطفل:',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-
-              Row(
-                children: _children.map((c) {
-                  final isSelected = _selectedChildId == c['id'];
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _selectedChildId = c['id']),
-                      child: Container(
-                        margin: const EdgeInsets.only(left: 6, right: 6),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: isSelected ? Colors.white : Colors.white.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: isSelected ? AppTheme.navy : AppTheme.cardBorder,
-                            width: isSelected ? 2 : 1,
-                          ),
-                          boxShadow: isSelected
-                              ? [
-                                  BoxShadow(
-                                    color: AppTheme.navy.withOpacity(0.08),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ]
-                              : null,
-                        ),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: const Row(
+                    children: [
+                      Text('💸', style: TextStyle(fontSize: 36)),
+                      SizedBox(width: 16),
+                      Expanded(
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(c['avatar'], style: const TextStyle(fontSize: 32)),
-                            const SizedBox(height: 6),
                             Text(
-                              c['name'],
-                              style: const TextStyle(
+                              'تحويل فوري إلى كارت ميزة',
+                              style: TextStyle(
+                                color: Colors.white,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 15,
+                                fontSize: 16,
                               ),
                             ),
+                            SizedBox(height: 4),
                             Text(
-                              'الرصيد: ${c['current']} ج.م',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppTheme.emeraldDark,
-                                fontWeight: FontWeight.w600,
+                              'يصل المبلغ لحظياً لمحفظة الطفل وكارته البنكي',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
 
-              // Quick Amount Chips
-              const Text(
-                'مبالغ سريعة:',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [20, 50, 100, 200].map((val) {
-                  return ActionChip(
-                    label: Text('$val ج.م'),
-                    backgroundColor: Colors.white,
-                    side: const BorderSide(color: AppTheme.cardBorder),
-                    labelStyle: const TextStyle(
+                if (_isLoading)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                else if (_errorMessage != null)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.coral.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          _errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: AppTheme.coral),
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton(
+                          onPressed: _loadChildren,
+                          child: const Text('إعادة المحاولة'),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_children.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.cardBorder),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text('👶', style: TextStyle(fontSize: 40)),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'لا يوجد أطفال في العائلة بعد',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: AppTheme.navy,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'يجب إضافة طفل أولاً لتتمكن من إرسال المصروف إلى محفظته',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 13, color: AppTheme.textMuted),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.navy,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 12),
+                          ),
+                          onPressed: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const FamilyMembersScreen(),
+                              ),
+                            );
+                            _loadChildren();
+                          },
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('إضافة بطل مالي جديد'),
+                        ),
+                      ],
+                    ),
+                  )
+                else ...[
+                  // Child Selection
+                  const Text(
+                    'اختر الطفل المستلم:',
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
+                      fontSize: 14,
                       color: AppTheme.navy,
                     ),
-                    onPressed: () {
-                      _amountController.text = val.toString();
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 20),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: _children.map((c) {
+                      final childId = c['id']?.toString();
+                      final isSelected = _selectedChildId == childId;
+                      final bal = (c['balance'] as num?)?.toDouble() ?? 0.0;
+                      return Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() => _selectedChildId = childId);
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppTheme.emerald.withOpacity(0.12)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppTheme.emerald
+                                    : AppTheme.cardBorder,
+                                width: isSelected ? 2 : 1,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(c['avatar'] ?? '👦',
+                                    style: const TextStyle(fontSize: 28)),
+                                const SizedBox(height: 6),
+                                Text(
+                                  c['full_name'] ?? 'ابن',
+                                  style: TextStyle(
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${bal.toStringAsFixed(0)} ج.م',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.emeraldDark,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 20),
 
-              CustomTextField(
-                controller: _amountController,
-                label: 'المبلغ المراد تحويله (بالجنيه المصري)',
-                hint: '0.00',
-                keyboardType: TextInputType.number,
-                prefixIcon: Icons.attach_money,
-              ),
-              const SizedBox(height: 16),
+                  // Quick Amount Chips
+                  const Text(
+                    'المبلغ (ج.م):',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: AppTheme.navy,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [50, 100, 150, 200].map((val) {
+                      return GestureDetector(
+                        onTap: () {
+                          _amountController.text = val.toString();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppTheme.cardBorder),
+                          ),
+                          child: Text(
+                            '$val ج.م',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              color: AppTheme.navy,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 14),
 
-              CustomTextField(
-                controller: _noteController,
-                label: 'رسالة تشجيعية (اختياري)',
-                hint: 'مصروف أسبوعي ممتاز! فخور بيك يا بطل ❤️',
-                prefixIcon: Icons.message_outlined,
-              ),
-              const SizedBox(height: 32),
+                  CustomTextField(
+                    controller: _amountController,
+                    label: 'أو أدخل مبلغاً مخصصاً',
+                    hint: 'مثلاً: 120',
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 14),
 
-              CustomButton(
-                text: 'تحويل المصروف فوراً 🚀',
-                backgroundColor: AppTheme.emerald,
-                isLoading: _isLoading,
-                onPressed: _sendAllowance,
-              ),
-            ],
+                  CustomTextField(
+                    controller: _noteController,
+                    label: 'ملاحظة أو سبب التحويل (اختياري)',
+                    hint: 'مثلاً: مصروف نهاية الأسبوع ⭐',
+                  ),
+                  const SizedBox(height: 24),
+
+                  CustomButton(
+                    text: 'تحويل المصروف الآن 🚀',
+                    backgroundColor: AppTheme.navy,
+                    isLoading: _isSending,
+                    onPressed: _sendAllowance,
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),

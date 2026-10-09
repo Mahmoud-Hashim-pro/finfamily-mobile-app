@@ -5,8 +5,10 @@ import '../../core/api_client.dart';
 import '../../config/api_config.dart';
 import '../../config/theme.dart';
 import '../../widgets/stat_card.dart';
+import '../../core/error_handler.dart';
 import 'family_cards_screen.dart';
 import 'spending_limits_screen.dart';
+import 'family_members_screen.dart';
 import '../auth/role_select_screen.dart';
 
 class ParentDashboardScreen extends StatefulWidget {
@@ -18,6 +20,7 @@ class ParentDashboardScreen extends StatefulWidget {
 
 class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
   bool _isLoading = true;
+  String? _errorMessage;
   Map<String, dynamic>? _overview;
   List<dynamic> _children = [];
   List<dynamic> _transactions = [];
@@ -29,7 +32,10 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
     try {
       final res = await ApiClient().get(ApiConfig.familyOverview);
       final data = res.data;
@@ -39,53 +45,10 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
         _transactions = data['recent_transactions'] ?? [];
         _isLoading = false;
       });
-    } catch (_) {
-      // Fallback realistic dummy data if offline or backend is initializing
+    } catch (e) {
       setState(() {
-        _overview = {
-          'family_name': 'عائلة حسن',
-          'family_code': 'FF8921',
-          'total_balance': 2450.0,
-          'total_spent_today': 120.0,
-          'pending_approvals_count': 3,
-        };
-        _children = [
-          {
-            'id': 'c1',
-            'full_name': 'لطفي',
-            'avatar': '👦',
-            'balance': 320.5,
-            'card_status': 'active',
-            'card_number': '5061 •••• •••• 1234',
-          },
-          {
-            'id': 'c2',
-            'full_name': 'سارة',
-            'avatar': '👧',
-            'balance': 480.0,
-            'card_status': 'active',
-            'card_number': '5061 •••• •••• 5678',
-          },
-        ];
-        _transactions = [
-          {
-            'id': 't1',
-            'merchant': 'Metro Market',
-            'child_name': 'لطفي',
-            'amount': -28.5,
-            'category': 'Groceries',
-            'date': 'اليوم 09:12 ص',
-          },
-          {
-            'id': 't2',
-            'merchant': 'School Canteen',
-            'child_name': 'سارة',
-            'amount': -12.0,
-            'category': 'Food',
-            'date': 'أمس 12:30 م',
-          },
-        ];
         _isLoading = false;
+        _errorMessage = ApiErrorHandler.getErrorMessage(e);
       });
     }
   }
@@ -106,6 +69,33 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_errorMessage != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.coral.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.coral.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: AppTheme.coral),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _errorMessage!,
+                            style: const TextStyle(color: AppTheme.coral, fontSize: 13),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _loadData,
+                          child: const Text('إعادة المحاولة', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 // Header: Profile & Family Code
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -130,7 +120,10 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                               ),
                             ),
                             Text(
-                              _overview?['family_name'] ?? 'عائلة FinFamily',
+                              _overview?['family_name'] ??
+                                  (auth.user?['full_name'] != null
+                                      ? 'عائلة ${auth.user!['full_name']}'
+                                      : 'عائلتي'),
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: AppTheme.textSecondary,
@@ -155,7 +148,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                               const Icon(Icons.tag, size: 14, color: AppTheme.navy),
                               const SizedBox(width: 4),
                               Text(
-                                _overview?['family_code'] ?? 'FF2026',
+                                _overview?['family_code'] ?? '---',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 12,
@@ -217,7 +210,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                       Row(
                         children: [
                           Text(
-                            '${(_overview?['total_balance'] ?? 2450.0).toStringAsFixed(2)}',
+                            ((_overview?['total_balance'] ?? 0.0) as num).toDouble().toStringAsFixed(2),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 32,
@@ -251,7 +244,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                                 size: 16, color: AppTheme.gold),
                             const SizedBox(width: 6),
                             Text(
-                              'مصروف اليوم: ${(_overview?['total_spent_today'] ?? 120.0).toStringAsFixed(0)} ج.م',
+                              'مصروف اليوم: ${((_overview?['total_spent_today'] ?? 0.0) as num).toDouble().toStringAsFixed(0)} ج.م',
                               style: const TextStyle(
                                   color: Colors.white, fontSize: 12),
                             ),
@@ -300,13 +293,14 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                       ),
                     ),
                     TextButton(
-                      onPressed: () {
-                        Navigator.push(
+                      onPressed: () async {
+                        await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const FamilyCardsScreen(),
                           ),
                         );
+                        _loadData();
                       },
                       child: const Text('إدارة الكروت'),
                     ),
@@ -314,96 +308,158 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // Children List
-                ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _children.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final c = _children[index];
-                    return Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: AppTheme.cardBorder),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: AppTheme.emerald.withOpacity(0.12),
-                            ),
-                            child: Center(
-                              child: Text(c['avatar'] ?? '👦',
-                                  style: const TextStyle(fontSize: 24)),
-                            ),
+                // Children List or Empty State
+                if (_children.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.cardBorder),
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppTheme.emerald.withOpacity(0.1),
+                            shape: BoxShape.circle,
                           ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          child: const Icon(Icons.person_add_alt_1_outlined,
+                              size: 36, color: AppTheme.emerald),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'لا يوجد أطفال مسجلون بعد',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.navy,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'أضف أطفالك للبدء في تعيين كروت ميزة ومتابعة مصاريفهم ومهامهم',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.navy,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 10),
+                          ),
+                          onPressed: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const FamilyMembersScreen(),
+                              ),
+                            );
+                            _loadData();
+                          },
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('إضافة بطل مالي جديد'),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _children.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final c = _children[index];
+                      return Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: AppTheme.cardBorder),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: AppTheme.emerald.withOpacity(0.12),
+                              ),
+                              child: Center(
+                                child: Text(c['avatar'] ?? '👦',
+                                    style: const TextStyle(fontSize: 24)),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    c['full_name'] ?? 'ابن',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    c['card_number'] ?? '5061 •••• •••• 1234',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppTheme.textMuted,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text(
-                                  c['full_name'] ?? 'ابن',
+                                  '${(c['balance'] ?? 0.0).toStringAsFixed(1)} ج.م',
                                   style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
+                                    fontWeight: FontWeight.w800,
                                     fontSize: 15,
+                                    color: AppTheme.emeraldDark,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
-                                Text(
-                                  c['card_number'] ?? '5061 •••• •••• 1234',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: AppTheme.textMuted,
-                                    fontFamily: 'monospace',
+                                GestureDetector(
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const SpendingLimitsScreen(),
+                                      ),
+                                    );
+                                  },
+                                  child: const Text(
+                                    'حدود الصرف ⚙️',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppTheme.navy,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                '${(c['balance'] ?? 0.0).toStringAsFixed(1)} ج.م',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 15,
-                                  color: AppTheme.emeraldDark,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              GestureDetector(
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const SpendingLimitsScreen(),
-                                    ),
-                                  );
-                                },
-                                child: const Text(
-                                  'حدود الصرف ⚙️',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: AppTheme.navy,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 const SizedBox(height: 28),
 
                 // Recent Transactions Feed

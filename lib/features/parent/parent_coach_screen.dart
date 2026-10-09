@@ -49,30 +49,20 @@ class _ParentCoachScreenState extends State<ParentCoachScreen> {
     try {
       final res = await ApiClient().post(
         ApiConfig.aiCoach,
-        data: {'prompt': text.trim()},
+        data: {'message': text.trim()},
       );
       final reply = res.data['reply'] ?? res.data['response'] ?? 'أنا هنا لمساعدتك دائماً!';
       setState(() {
         _messages.add({'role': 'assistant', 'text': reply});
         _isTyping = false;
       });
-    } catch (_) {
-      // Intelligent fallback answer if offline
-      await Future.delayed(const Duration(seconds: 1));
-      String fallbackAnswer;
-      if (text.contains('مصروف')) {
-        fallbackAnswer =
-            'المعيار الشائع في مصر هو حساب المصروف الأسبوعي بمعدل (العمر × 10 أو 15 ج.م) أسبوعياً مع تقسيمها: 50% مصاريف شخصية، 30% ادخار في حصالة كارت ميزة، و20% للمهام.';
-      } else if (text.contains('ادخار')) {
-        fallbackAnswer =
-            'أفضل طريقة هي "مطابقة الادخار" (Parental Match): اتفق مع طفلك إن كل 10 جنيه هيحوشها في الهدف بتاعه، أنت هتزود له عليها 5 جنيه تشجيعية!';
-      } else {
-        fallbackAnswer =
-            'خطوة ممتازة! تعليم الأطفال الوعي المالي بيعتمد على الممارسة العملية مش النظري. تطبيق FinFamily بيساعدهم يجربوا ويغلطوا في بيئة آمنة تماماً.';
-      }
-
+    } catch (e) {
+      final errMsg = ApiErrorHandler.getErrorMessage(e);
       setState(() {
-        _messages.add({'role': 'assistant', 'text': fallbackAnswer});
+        _messages.add({
+          'role': 'assistant',
+          'text': 'تعذر الاتصال بالمستشار المالي: $errMsg. يرجى المحاولة مرة أخرى.',
+        });
         _isTyping = false;
       });
     }

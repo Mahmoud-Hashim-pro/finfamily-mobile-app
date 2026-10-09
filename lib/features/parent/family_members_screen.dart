@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../../config/theme.dart';
+import '../../core/api_client.dart';
+import '../../config/api_config.dart';
+import '../../core/auth_state.dart';
+import '../../core/error_handler.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 
@@ -12,38 +17,48 @@ class FamilyMembersScreen extends StatefulWidget {
 }
 
 class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
-  final String _familyCode = 'FF2026';
+  String _familyCode = '---';
+  String _familyName = '';
+  List<dynamic> _children = [];
+  bool _isLoading = true;
+  String? _errorMessage;
 
-  final List<Map<String, dynamic>> _members = [
-    {
-      'name': 'أحمد حسن',
-      'role': 'ولي الأمر (المسؤول)',
-      'avatar': '👨',
-      'isParent': true,
-    },
-    {
-      'name': 'لطفي',
-      'role': 'بطل مالي · 10 سنوات',
-      'avatar': '👦',
-      'isParent': false,
-      'level': 3,
-      'card': '5061 •••• •••• 1234',
-    },
-    {
-      'name': 'سارة',
-      'role': 'بطل مالي · 8 سنوات',
-      'avatar': '👧',
-      'isParent': false,
-      'level': 2,
-      'card': '5061 •••• •••• 5678',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final codeRes = await ApiClient().get(ApiConfig.familyCode);
+      final childrenRes = await ApiClient().get(ApiConfig.familyChildren);
+
+      setState(() {
+        _familyCode = codeRes.data['family_code'] ?? '---';
+        _familyName = codeRes.data['family_name'] ?? '';
+        _children = childrenRes.data['children'] ?? [];
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = ApiErrorHandler.getErrorMessage(e);
+      });
+    }
+  }
 
   void _showAddChildDialog() {
     final nameController = TextEditingController();
-    final ageController = TextEditingController();
     final pinController = TextEditingController();
     String selectedAvatar = '👦';
+    bool isSubmitting = false;
+    String? dialogError;
 
     showModalBottomSheet(
       context: context,
@@ -66,9 +81,31 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
             children: [
               const Text(
                 'إضافة بطل مالي جديد 🧒',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.navy),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.navy,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'سيتم إنشاء حساب للطفل وتوليد كارت ميزة افتراضي له فوراً',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
               ),
               const SizedBox(height: 16),
+              if (dialogError != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.coral.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    dialogError!,
+                    style: const TextStyle(color: AppTheme.coral, fontSize: 12),
+                  ),
+                ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: ['👦', '👧', '🦁', '🚀', '⭐'].map((emoji) {
@@ -79,10 +116,14 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                       margin: const EdgeInsets.symmetric(horizontal: 6),
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: isSelected ? AppTheme.emerald.withOpacity(0.2) : Colors.grey.shade100,
+                        color: isSelected
+                            ? AppTheme.emerald.withOpacity(0.2)
+                            : Colors.grey.shade100,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: isSelected ? AppTheme.emerald : Colors.transparent,
+                          color: isSelected
+                              ? AppTheme.emerald
+                              : Colors.transparent,
                           width: 2,
                         ),
                       ),
@@ -94,20 +135,13 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
               const SizedBox(height: 16),
               CustomTextField(
                 controller: nameController,
-                label: 'اسم الطفل',
-                hint: 'مثلاً: عمر',
-              ),
-              const SizedBox(height: 12),
-              CustomTextField(
-                controller: ageController,
-                label: 'العمر',
-                hint: '10',
-                keyboardType: TextInputType.number,
+                label: 'اسم الطفل بالكامل',
+                hint: 'مثلاً: عمر أحمد',
               ),
               const SizedBox(height: 12),
               CustomTextField(
                 controller: pinController,
-                label: 'رمز PIN الخاص به (4 أرقام للدخول)',
+                label: 'رمز PIN الخاص به (4 أرقام)',
                 hint: '1234',
                 keyboardType: TextInputType.number,
                 obscureText: true,
@@ -116,25 +150,52 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
               CustomButton(
                 text: 'إنشاء حساب الطفل والكارت',
                 backgroundColor: AppTheme.emerald,
-                onPressed: () {
-                  if (nameController.text.trim().isNotEmpty) {
-                    setState(() {
-                      _members.add({
-                        'name': nameController.text.trim(),
-                        'role': 'بطل مالي · ${ageController.text} سنوات',
-                        'avatar': selectedAvatar,
-                        'isParent': false,
-                        'level': 1,
-                        'card': '5061 •••• •••• 9999',
-                      });
-                    });
+                isLoading: isSubmitting,
+                onPressed: () async {
+                  final name = nameController.text.trim();
+                  final pin = pinController.text.trim();
+
+                  if (name.isEmpty) {
+                    setModalState(() => dialogError = 'يرجى إدخال اسم الطفل');
+                    return;
+                  }
+                  if (pin.length != 4 || int.tryParse(pin) == null) {
+                    setModalState(
+                        () => dialogError = 'رمز الـ PIN يجب أن يتكون من 4 أرقام');
+                    return;
+                  }
+
+                  setModalState(() {
+                    isSubmitting = true;
+                    dialogError = null;
+                  });
+
+                  try {
+                    await ApiClient().post(
+                      ApiConfig.createChild,
+                      data: {
+                        'full_name': name,
+                        'pin': pin,
+                      },
+                    );
+
+                    if (!ctx.mounted) return;
                     Navigator.pop(ctx);
+
+                    if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('تمت إضافة الطفل وتوليد كارت ميزة بنجاح! 💳'),
+                      SnackBar(
+                        content: Text('تم تسجيل $name وتوليد كارت ميزة بنجاح! 💳'),
                         backgroundColor: AppTheme.emerald,
                       ),
                     );
+
+                    _loadData();
+                  } catch (e) {
+                    setModalState(() {
+                      isSubmitting = false;
+                      dialogError = ApiErrorHandler.getErrorMessage(e);
+                    });
                   }
                 },
               ),
@@ -147,173 +208,288 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = Provider.of<AuthState>(context);
+
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
       appBar: AppBar(
         title: const Text('أفراد العائلة والكود'),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Family Code Banner
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0F2D52), Color(0xFF1E3A8A)],
-                  ),
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.navy.withOpacity(0.25),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
+        child: RefreshIndicator(
+          onRefresh: _loadData,
+          color: AppTheme.navy,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_errorMessage != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.coral.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.coral.withOpacity(0.3)),
                     ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    const Text(
-                      'كود العائلة الخاص بكم (Family Code)',
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Row(
                       children: [
-                        Text(
-                          _familyCode,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 32,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 4,
-                            fontFamily: 'monospace',
+                        const Icon(Icons.error_outline, color: AppTheme.coral),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _errorMessage!,
+                            style: const TextStyle(
+                                color: AppTheme.coral, fontSize: 13),
                           ),
                         ),
-                        const SizedBox(width: 14),
-                        IconButton(
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: _familyCode));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('تم نسخ كود العائلة إلى الحافظة! 📋'),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.copy, color: AppTheme.gold),
+                        TextButton(
+                          onPressed: _loadData,
+                          child: const Text('إعادة المحاولة'),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                  ),
+
+                // Family Code Banner
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0F2D52), Color(0xFF1E3A8A)],
+                    ),
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.navy.withOpacity(0.25),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        _familyName.isNotEmpty
+                            ? 'كود عائلة $_familyName'
+                            : 'كود العائلة الخاص بكم (Family Code)',
+                        style:
+                            const TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _familyCode,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 32,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 4,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          IconButton(
+                            onPressed: () {
+                              Clipboard.setData(
+                                  ClipboardData(text: _familyCode));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content:
+                                      Text('تم نسخ كود العائلة إلى الحافظة! 📋'),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.copy, color: AppTheme.gold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'أعطِ هذا الكود لأولادك ليسجلوا به في تطبيق الهاتف مع الـ PIN الخاص بهم.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white60, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
                     const Text(
-                      'أعطِ هذا الكود لأولادك ليسجلوا به في تطبيق الهاتف مع الـ PIN الخاص بهم.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white60, fontSize: 11),
+                      'أعضاء العائلة المسجلين:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.navy,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _showAddChildDialog,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('إضافة طفل'),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 12),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'أعضاء العائلة المسجلين:',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.navy,
+                // Parent Card
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: AppTheme.cardBorder),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 24,
+                        backgroundColor: AppTheme.navy.withOpacity(0.1),
+                        child: const Text('👨', style: TextStyle(fontSize: 26)),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              auth.user?['full_name'] ?? 'ولي الأمر',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'ولي الأمر (المسؤول)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Children List or Empty State
+                if (_isLoading)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: CircularProgressIndicator(),
                     ),
-                  ),
-                  TextButton.icon(
-                    onPressed: _showAddChildDialog,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('إضافة طفل'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _members.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final m = _members[index];
-                  final isParent = m['isParent'] == true;
-
-                  return Container(
-                    padding: const EdgeInsets.all(16),
+                  )
+                else if (_children.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: AppTheme.cardBorder),
                     ),
-                    child: Row(
+                    child: Column(
                       children: [
-                        CircleAvatar(
-                          radius: 24,
-                          backgroundColor: isParent
-                              ? AppTheme.navy.withOpacity(0.1)
-                              : AppTheme.emerald.withOpacity(0.12),
-                          child: Text(m['avatar'], style: const TextStyle(fontSize: 26)),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                m['name'],
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                m['role'],
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.textSecondary,
-                                ),
-                              ),
-                              if (!isParent) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  m['card'],
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: AppTheme.textMuted,
-                                    fontFamily: 'monospace',
-                                  ),
-                                ),
-                              ],
-                            ],
+                        const Text('🧒', style: TextStyle(fontSize: 36)),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'لا يوجد أطفال مسجلون في هذه العائلة بعد',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: AppTheme.navy,
                           ),
                         ),
-                        if (!isParent)
-                          IconButton(
-                            icon: const Icon(Icons.password, size: 20, color: AppTheme.navy),
-                            tooltip: 'تغيير الـ PIN',
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('تعديل PIN لـ ${m['name']}')),
-                              );
-                            },
-                          ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'اضغط على زر "إضافة طفل" بالأعلى لإنشاء أول حساب',
+                          style: TextStyle(
+                              fontSize: 12, color: AppTheme.textMuted),
+                        ),
                       ],
                     ),
-                  );
-                },
-              ),
-            ],
+                  )
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _children.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final c = _children[index];
+                      final last4 = c['id'] != null
+                          ? (c['id'].toString().length >= 4
+                              ? c['id']
+                                  .toString()
+                                  .substring(c['id'].toString().length - 4)
+                              : '0000')
+                          : '0000';
+
+                      return Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: AppTheme.cardBorder),
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 24,
+                              backgroundColor:
+                                  AppTheme.emerald.withOpacity(0.12),
+                              child: const Text('👦',
+                                  style: TextStyle(fontSize: 26)),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    c['full_name'] ?? 'بطل مالي',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  const Text(
+                                    'بطل مالي',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '5061 •••• •••• $last4',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: AppTheme.textMuted,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
           ),
         ),
       ),

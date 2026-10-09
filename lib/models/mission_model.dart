@@ -31,7 +31,7 @@ class MissionModel {
       id: json['id'] ?? '',
       title: json['title'] ?? '',
       description: json['description'] ?? '',
-      rewardAmount: (json['reward_amount'] as num?)?.toDouble() ?? 0.0,
+      rewardAmount: ((json['reward'] ?? json['reward_amount'] ?? 0.0) as num).toDouble(),
       rewardXp: json['reward_xp'] ?? 50,
       status: json['status'] ?? 'pending',
       kind: json['kind'] ?? 'chore',
