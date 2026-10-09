@@ -5,6 +5,7 @@ import 'meeza_card_screen.dart';
 import 'wallet_screen.dart';
 import 'learn_screen.dart';
 import 'child_profile_screen.dart';
+import '../../core/update_checker.dart';
 
 class ChildNavShell extends StatefulWidget {
   const ChildNavShell({super.key});
@@ -15,6 +16,14 @@ class ChildNavShell extends StatefulWidget {
 
 class _ChildNavShellState extends State<ChildNavShell> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      UpdateChecker.checkForUpdates(context);
+    });
+  }
 
   final List<Widget> _screens = const [
     ChildHomeScreen(),

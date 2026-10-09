@@ -5,6 +5,7 @@ import 'allowance_screen.dart';
 import 'approvals_screen.dart';
 import 'parent_coach_screen.dart';
 import 'family_members_screen.dart';
+import '../../core/update_checker.dart';
 
 class ParentNavShell extends StatefulWidget {
   const ParentNavShell({super.key});
@@ -15,6 +16,14 @@ class ParentNavShell extends StatefulWidget {
 
 class _ParentNavShellState extends State<ParentNavShell> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      UpdateChecker.checkForUpdates(context);
+    });
+  }
 
   final List<Widget> _screens = const [
     ParentDashboardScreen(),

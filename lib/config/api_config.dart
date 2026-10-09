@@ -37,4 +37,5 @@ class ApiConfig {
   static const String goals = '/family/goals';
   static const String transactions = '/family/transactions';
   static const String aiCoach = '/functions/aiCoach';
+  static const String appVersion = '/app/version';
 }
