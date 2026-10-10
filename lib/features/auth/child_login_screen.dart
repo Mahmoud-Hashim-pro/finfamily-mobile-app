@@ -73,8 +73,8 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
   Future<void> _handleChildLogin() async {
     if (_selectedChild == null) return;
     final pin = _pinController.text.trim();
-    if (pin.length != 4) {
-      setState(() => _error = 'رمز PIN يجب أن يتكون من 4 أرقام');
+    if (pin.length != 6 || int.tryParse(pin) == null) {
+      setState(() => _error = 'رمز PIN يجب أن يتكون من 6 أرقام');
       return;
     }
 
@@ -197,7 +197,8 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
                   children: [
                     const Text(
                       'اختر حسابك:',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     TextButton(
                       onPressed: () => setState(() => _children = null),
@@ -298,8 +299,8 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
                 const SizedBox(height: 20),
                 CustomTextField(
                   controller: _pinController,
-                  label: 'رمز الـ PIN السري الخاص بك (4 أرقام)',
-                  hint: '••••',
+                  label: 'رمز الـ PIN السري الخاص بك (6 أرقام)',
+                  hint: '••••••',
                   keyboardType: TextInputType.number,
                   obscureText: true,
                   prefixIcon: Icons.lock_clock_outlined,

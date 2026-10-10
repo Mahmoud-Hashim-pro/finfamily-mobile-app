@@ -141,8 +141,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
               const SizedBox(height: 12),
               CustomTextField(
                 controller: pinController,
-                label: 'رمز PIN الخاص به (4 أرقام)',
-                hint: '1234',
+                label: 'رمز PIN الخاص به (6 أرقام)',
+                hint: '123456',
                 keyboardType: TextInputType.number,
                 obscureText: true,
               ),
@@ -159,9 +159,9 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                     setModalState(() => dialogError = 'يرجى إدخال اسم الطفل');
                     return;
                   }
-                  if (pin.length != 4 || int.tryParse(pin) == null) {
-                    setModalState(
-                        () => dialogError = 'رمز الـ PIN يجب أن يتكون من 4 أرقام');
+                  if (pin.length != 6 || int.tryParse(pin) == null) {
+                    setModalState(() =>
+                        dialogError = 'رمز الـ PIN يجب أن يتكون من 6 أرقام');
                     return;
                   }
 
@@ -185,7 +185,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('تم تسجيل $name وتوليد كارت ميزة بنجاح! 💳'),
+                        content:
+                            Text('تم تسجيل $name وتوليد كارت ميزة بنجاح! 💳'),
                         backgroundColor: AppTheme.emerald,
                       ),
                     );
@@ -232,7 +233,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                     decoration: BoxDecoration(
                       color: AppTheme.coral.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.coral.withOpacity(0.3)),
+                      border:
+                          Border.all(color: AppTheme.coral.withOpacity(0.3)),
                     ),
                     child: Row(
                       children: [
@@ -275,8 +277,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                         _familyName.isNotEmpty
                             ? 'كود عائلة $_familyName'
                             : 'كود العائلة الخاص بكم (Family Code)',
-                        style:
-                            const TextStyle(color: Colors.white70, fontSize: 13),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 13),
                       ),
                       const SizedBox(height: 10),
                       Row(
@@ -299,8 +301,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                                   ClipboardData(text: _familyCode));
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content:
-                                      Text('تم نسخ كود العائلة إلى الحافظة! 📋'),
+                                  content: Text(
+                                      'تم نسخ كود العائلة إلى الحافظة! 📋'),
                                 ),
                               );
                             },

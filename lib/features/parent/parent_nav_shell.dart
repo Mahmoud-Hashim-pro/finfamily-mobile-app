@@ -16,6 +16,7 @@ class ParentNavShell extends StatefulWidget {
 
 class _ParentNavShellState extends State<ParentNavShell> {
   int _currentIndex = 0;
+  final ValueNotifier<int> _dashboardRefreshSignal = ValueNotifier(0);
 
   @override
   void initState() {
@@ -25,20 +26,24 @@ class _ParentNavShellState extends State<ParentNavShell> {
     });
   }
 
-  final List<Widget> _screens = const [
-    ParentDashboardScreen(),
-    AllowanceScreen(),
-    ApprovalsScreen(),
-    ParentCoachScreen(),
-    FamilyMembersScreen(),
-  ];
+  @override
+  void dispose() {
+    _dashboardRefreshSignal.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          ParentDashboardScreen(refreshSignal: _dashboardRefreshSignal),
+          const AllowanceScreen(),
+          const ApprovalsScreen(),
+          const ParentCoachScreen(),
+          const FamilyMembersScreen(),
+        ],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -56,7 +61,12 @@ class _ParentNavShellState extends State<ParentNavShell> {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: BottomNavigationBar(
               currentIndex: _currentIndex,
-              onTap: (index) => setState(() => _currentIndex = index),
+              onTap: (index) {
+                if (index == 0 && _currentIndex != 0) {
+                  _dashboardRefreshSignal.value++;
+                }
+                setState(() => _currentIndex = index);
+              },
               backgroundColor: Colors.transparent,
               elevation: 0,
               type: BottomNavigationBarType.fixed,
