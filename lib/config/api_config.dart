@@ -38,4 +38,12 @@ class ApiConfig {
   static const String transactions = '/family/transactions';
   static const String aiCoach = '/functions/aiCoach';
   static const String appVersion = '/app/version';
+
+  // Super Admin Endpoints
+  static const String adminOverview = '/admin/overview';
+  static const String adminCards = '/admin/cards';
+  static const String adminTransactions = '/admin/transactions';
+  static const String adminDbHealth = '/admin/database/health';
+  static const String adminSecurityAlerts = '/admin/security/alerts';
+  static const String adminLogin = '/admin/auth/login';
 }

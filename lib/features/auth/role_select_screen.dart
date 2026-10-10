@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../config/theme.dart';
 import 'parent_login_screen.dart';
 import 'child_login_screen.dart';
+import '../admin/admin_login_screen.dart';
 
 class RoleSelectScreen extends StatelessWidget {
   const RoleSelectScreen({super.key});
@@ -77,6 +78,28 @@ class RoleSelectScreen extends StatelessWidget {
               ),
 
               const Spacer(),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AdminLoginScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.admin_panel_settings_outlined, size: 16, color: AppTheme.navy),
+                  label: const Text(
+                    'لوحة الإدارة المركزية (Super Admin)',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.navy,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
               const Center(
                 child: Text(
                   'مدعوم من البنك المركزي المصري عبر FinYology 2026',

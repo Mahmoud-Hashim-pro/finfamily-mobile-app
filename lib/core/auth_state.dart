@@ -23,6 +23,22 @@ class AuthState extends ChangeNotifier {
   bool get isParent => _role == 'parent';
   bool get isChild => _role == 'child';
 
+  static const List<String> superAdminEmails = [
+    'modyhashim2006@gmail.com',
+    'pro.mahmoud.h@gmail.com',
+    'bassantmohamedelramlaw@gmail.com',
+    'abdallah.ahmed@finfamily.com',
+    'omar.osama.sw.dev@gmail.com',
+    'ashayman111@gmail.com',
+    'ramezrizkw@gmail.com',
+    'zyad.ahmed.softwareeng@gmail.com',
+  ];
+
+  bool get isSuperAdmin {
+    final email = (_user?['email'] ?? '').toString().toLowerCase().trim();
+    return superAdminEmails.contains(email);
+  }
+
   AuthState() {
     _api.onUnauthorized = () {
       _status = AuthStatus.unauthenticated;
@@ -81,6 +97,30 @@ class AuthState extends ChangeNotifier {
       }
 
       final token = data['access_token'];
+      await _storage.saveSession(token: token, role: 'parent');
+      await checkAuth();
+      return true;
+    } catch (e) {
+      _errorMessage = ApiErrorHandler.getErrorMessage(e);
+      _status = AuthStatus.unauthenticated;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // Super Admin Direct Login
+  Future<bool> loginAdmin(String email, String password) async {
+    _status = AuthStatus.loading;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final response = await _api.post(
+        ApiConfig.adminLogin,
+        data: {'email': email.trim().toLowerCase(), 'password': password},
+      );
+
+      final token = response.data['access_token'];
       await _storage.saveSession(token: token, role: 'parent');
       await checkAuth();
       return true;
