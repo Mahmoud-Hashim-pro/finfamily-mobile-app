@@ -15,10 +15,10 @@ import '../admin/admin_dashboard_screen.dart';
 class ParentDashboardScreen extends StatefulWidget {
   const ParentDashboardScreen({
     super.key,
-    required this.refreshSignal,
+    this.refreshSignal,
   });
 
-  final ValueNotifier<int> refreshSignal;
+  final ValueNotifier<int>? refreshSignal;
 
   @override
   State<ParentDashboardScreen> createState() => _ParentDashboardScreenState();
@@ -34,7 +34,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    widget.refreshSignal.addListener(_handleRefresh);
+    widget.refreshSignal?.addListener(_handleRefresh);
     _loadData();
   }
 
@@ -44,7 +44,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
 
   @override
   void dispose() {
-    widget.refreshSignal.removeListener(_handleRefresh);
+    widget.refreshSignal?.removeListener(_handleRefresh);
     super.dispose();
   }
 
