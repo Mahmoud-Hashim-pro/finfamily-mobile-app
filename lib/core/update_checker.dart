@@ -6,18 +6,18 @@ import 'api_client.dart';
 
 class UpdateChecker {
   // Current installed app version & build
-  static const String currentVersion = '1.0.0';
-  static const int currentBuildNumber = 1;
+  static const String currentVersion = '1.0.3';
+  static const int currentBuildNumber = 4;
 
   static Future<void> checkForUpdates(BuildContext context) async {
     try {
       final res = await ApiClient().get(ApiConfig.appVersion);
       final data = res.data;
 
-      final latestBuild = (data['build_number'] as num?)?.toInt() ?? 1;
-      final latestVersion = data['latest_version'] ?? '1.0.0';
+      final latestBuild = (data['build_number'] as num?)?.toInt() ?? 4;
+      final latestVersion = data['latest_version'] ?? '1.0.3';
       final downloadUrl = data['download_url'] ??
-          'https://github.com/Mahmoud-Hashim-pro/finfamily-mobile-app/releases/latest';
+          'https://github.com/Mahmoud-Hashim-pro/finfamily-mobile-app/releases/latest/download/app-release.apk';
       final releaseNotes = data['release_notes'] ??
           'يتضمن هذا التحديث تحسينات أمنية وإصلاحات وإلغاء البيانات التجريبية.';
       final isMandatory = (data['is_mandatory'] as bool?) ?? false;
