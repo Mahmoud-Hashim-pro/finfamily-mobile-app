@@ -33,6 +33,10 @@ class ApiConfig {
   static const String auditLogs = '/family/audit-logs';
 
   // Child & Gamification endpoints
+  static const String walletMe = '/wallet/me';
+  static const String missionsMine = '/missions/mine';
+  static const String transactionsMine = '/transactions/mine';
+  static const String goalsMe = '/wallet/me/goals';
   static const String missions = '/family/missions';
   static const String goals = '/family/goals';
   static const String transactions = '/family/transactions';
