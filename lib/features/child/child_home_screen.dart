@@ -1,353 +1,151 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../config/theme.dart';
+import '../../core/auth_state.dart';
+import '../../core/api_client.dart';
+import '../../core/error_handler.dart';
 import 'missions_screen.dart';
 import 'goals_screen.dart';
 import 'child_coach_screen.dart';
 import 'leaderboard_screen.dart';
 
-class ChildHomeScreen extends StatelessWidget {
+class ChildHomeScreen extends StatefulWidget {
   const ChildHomeScreen({super.key});
 
   @override
+  State<ChildHomeScreen> createState() => _ChildHomeScreenState();
+}
+
+class _ChildHomeScreenState extends State<ChildHomeScreen> {
+  bool _isLoading = true;
+  double _balance = 0.0;
+  String _cardNumber = '5061 •••• •••• 1234';
+  int _activeMissionsCount = 0;
+  String? _firstGoalName;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final walletRes = await ApiClient().get('/wallet/me');
+      final wallet = walletRes.data;
+
+      // Optionally load missions count
+      int missionsCount = 0;
+      try {
+        final missionsRes = await ApiClient().get('/missions/mine');
+        final mList = missionsRes.data as List? ?? [];
+        missionsCount = mList.where((m) => m['status'] == 'pending' || m['status'] == 'submitted').length;
+      } catch (_) {}
+
+      final goals = (wallet['savings_goals'] as List?) ?? [];
+
+      if (!mounted) return;
+      setState(() {
+        _balance = (wallet['balance'] as num?)?.toDouble() ?? 0.0;
+        _cardNumber = wallet['card_number'] ?? '5061 •••• •••• 1234';
+        _activeMissionsCount = missionsCount;
+        if (goals.isNotEmpty) {
+          _firstGoalName = goals.first['name'];
+        }
+        _isLoading = false;
+        _errorMessage = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = ApiErrorHandler.getErrorMessage(e);
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    const String childName = 'لطفي';
-    const int level = 3;
-    const int xp = 1250;
-    const int xpToNext = 1600;
-    const int streak = 5;
-    const double balance = 320.5;
+    final auth = Provider.of<AuthState>(context);
+    final childName = auth.user?['full_name'] ?? 'بطل مالي';
+    final int level = (auth.user?['level'] as num?)?.toInt() ?? 1;
+    final int xp = (auth.user?['xp'] as num?)?.toInt() ?? 0;
+    final int xpToNext = (level * 500) > 0 ? (level * 500) : 500;
+    final int streak = (auth.user?['streak'] as num?)?.toInt() ?? 1;
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header: Avatar, Name & Streaks
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppTheme.emerald.withOpacity(0.15),
-                          border: Border.all(color: AppTheme.emerald, width: 2),
-                        ),
-                        child: const Center(
-                          child: Text('👦', style: TextStyle(fontSize: 28)),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'صباح الخير يا بطل! 🚀',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textSecondary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            childName,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: AppTheme.navy,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  // Streak badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade50,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppTheme.gold),
-                    ),
-                    child: Row(
-                      children: [
-                        const Text('🔥', style: TextStyle(fontSize: 16)),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$streak أيام متتالية',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.amber.shade900,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              // Level & XP Bar
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0F2D52), Color(0xFF1E3A8A)],
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.navy.withOpacity(0.2),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
+        child: RefreshIndicator(
+          onRefresh: _loadData,
+          color: AppTheme.emerald,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header: Avatar, Name & Streaks
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppTheme.emerald.withOpacity(0.15),
+                            border: Border.all(color: AppTheme.emerald, width: 2),
+                          ),
+                          child: const Center(
+                            child: Text('👦', style: TextStyle(fontSize: 28)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('⭐', style: TextStyle(fontSize: 18)),
-                            const SizedBox(width: 6),
+                            const Text(
+                              'صباح الخير يا بطل! 🚀',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             Text(
-                              'المستوى $level · بطل التوفير',
+                              childName,
                               style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: AppTheme.navy,
                               ),
                             ),
                           ],
                         ),
-                        Text(
-                          '$xp / $xpToNext XP',
-                          style: const TextStyle(
-                            color: AppTheme.gold,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 12,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: LinearProgressIndicator(
-                        value: xp / xpToNext,
-                        minHeight: 8,
-                        backgroundColor: Colors.white24,
-                        valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.emerald),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Quick Balance & Card Preview
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF00B894), Color(0xFF059669)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.emerald.withOpacity(0.35),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'رصيد كارت ميزة المتاح',
-                          style: TextStyle(color: Colors.white, fontSize: 13),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppTheme.gold,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'meeza',
-                            style: TextStyle(
-                              color: AppTheme.navyDark,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Text(
-                          balance.toStringAsFixed(2),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 34,
-                            fontWeight: FontWeight.w900,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'ج.م',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      '5061 •••• •••• 1234',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                        letterSpacing: 2,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Quick Actions Grid
-              Row(
-                children: [
-                  _QuickAction(
-                    emoji: '🧹',
-                    title: 'المهام والفلوس',
-                    subtitle: '3 مهمات جاهزة',
-                    color: AppTheme.blue,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const MissionsScreen()),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  _QuickAction(
-                    emoji: '🎯',
-                    title: 'حصالة الأحلام',
-                    subtitle: 'عجلة جديدة 🚲',
-                    color: AppTheme.purple,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const GoalsScreen()),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  _QuickAction(
-                    emoji: '🤖',
-                    title: 'صديقي المالي',
-                    subtitle: 'اسأل الذكاء الاصطناعي',
-                    color: AppTheme.emerald,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const ChildCoachScreen()),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  _QuickAction(
-                    emoji: '🏆',
-                    title: 'لوحة الأبطال',
-                    subtitle: 'المركز الأول 🥇',
-                    color: AppTheme.gold,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // Daily Challenge
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppTheme.gold.withOpacity(0.5)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.gold.withOpacity(0.08),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
+                    // Streak badge
                     Container(
-                      width: 50,
-                      height: 50,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: AppTheme.gold.withOpacity(0.15),
+                        color: Colors.amber.shade50,
                         borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppTheme.gold),
                       ),
-                      child: const Center(
-                        child: Text('⚡', style: TextStyle(fontSize: 26)),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
+                          const Text('🔥', style: TextStyle(fontSize: 16)),
+                          const SizedBox(width: 4),
                           Text(
-                            'تحدي اليوم: وفّر 10 جنيه',
+                            '$streak أيام متتالية',
                             style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 15,
-                              color: AppTheme.navy,
-                            ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'وفّر ثمن سناك واحد وحطه في هدفك لتحصل على 50 XP!',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppTheme.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber.shade900,
                             ),
                           ),
                         ],
@@ -355,9 +153,297 @@ class ChildHomeScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 20),
-            ],
+                const SizedBox(height: 20),
+
+                // Error message if any
+                if (_errorMessage != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.coral.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.coral.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline, color: AppTheme.coral, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(_errorMessage!,
+                              style: const TextStyle(color: AppTheme.coral, fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // Level & XP Bar
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0F2D52), Color(0xFF1E3A8A)],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.navy.withOpacity(0.2),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Text('⭐', style: TextStyle(fontSize: 18)),
+                              const SizedBox(width: 6),
+                              Text(
+                                'المستوى $level · بطل التوفير',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            '$xp / $xpToNext XP',
+                            style: const TextStyle(
+                              color: AppTheme.gold,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: LinearProgressIndicator(
+                          value: xpToNext > 0 ? (xp / xpToNext).clamp(0.0, 1.0) : 0.0,
+                          minHeight: 8,
+                          backgroundColor: Colors.white24,
+                          valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.emerald),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Quick Balance & Card Preview
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF00B894), Color(0xFF059669)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.emerald.withOpacity(0.35),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'رصيد كارت ميزة المتاح',
+                            style: TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppTheme.gold,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'meeza',
+                              style: TextStyle(
+                                color: AppTheme.navyDark,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Text(
+                            _balance.toStringAsFixed(2),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 34,
+                              fontWeight: FontWeight.w900,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'ج.م',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        _cardNumber,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          letterSpacing: 2,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Quick Actions Grid
+                Row(
+                  children: [
+                    _QuickAction(
+                      emoji: '🧹',
+                      title: 'المهام والفلوس',
+                      subtitle: _activeMissionsCount > 0
+                          ? '$_activeMissionsCount مهمات جاهزة'
+                          : 'عرض مهامك المالية',
+                      color: AppTheme.blue,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const MissionsScreen()),
+                        ).then((_) => _loadData());
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    _QuickAction(
+                      emoji: '🎯',
+                      title: 'حصالة الأحلام',
+                      subtitle: _firstGoalName != null ? _firstGoalName! : 'أهداف الادخار 🚲',
+                      color: AppTheme.purple,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const GoalsScreen()),
+                        ).then((_) => _loadData());
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _QuickAction(
+                      emoji: '🤖',
+                      title: 'صديقي المالي',
+                      subtitle: 'اسأل الذكاء الاصطناعي',
+                      color: AppTheme.emerald,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ChildCoachScreen()),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    _QuickAction(
+                      emoji: '🏆',
+                      title: 'لوحة الأبطال',
+                      subtitle: 'ترتيب العائلة 🥇',
+                      color: AppTheme.gold,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Daily Challenge
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppTheme.gold.withOpacity(0.5)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.gold.withOpacity(0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: AppTheme.gold.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Center(
+                          child: Text('⚡', style: TextStyle(fontSize: 26)),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'تحدي اليوم: وفّر 10 جنيه',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                                color: AppTheme.navy,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'وفّر ثمن سناك واحد وحطه في هدفك لتحصل على 50 XP!',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
       ),
@@ -422,7 +508,7 @@ class _QuickAction extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 11,
                   color: AppTheme.textSecondary,
                   fontWeight: FontWeight.w500,

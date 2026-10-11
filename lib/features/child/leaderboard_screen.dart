@@ -1,166 +1,259 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../config/theme.dart';
+import '../../core/auth_state.dart';
+import '../../core/api_client.dart';
 
-class LeaderboardScreen extends StatelessWidget {
+class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> rankings = [
-      {
-        'rank': 1,
-        'name': 'لطفي (أنت)',
-        'avatar': '👦',
-        'xp': 1250,
-        'level': 3,
-        'streak': 5,
-        'isCurrent': true,
-      },
-      {
-        'rank': 2,
-        'name': 'سارة',
-        'avatar': '👧',
-        'xp': 980,
-        'level': 2,
-        'streak': 3,
-        'isCurrent': false,
-      },
-      {
-        'rank': 3,
-        'name': 'عمر (ابن العم)',
-        'avatar': '🧒',
-        'xp': 640,
-        'level': 1,
-        'streak': 1,
-        'isCurrent': false,
-      },
-    ];
+  State<LeaderboardScreen> createState() => _LeaderboardScreenState();
+}
 
+class _LeaderboardScreenState extends State<LeaderboardScreen> {
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _rankings = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLeaderboard();
+  }
+
+  Future<void> _loadLeaderboard() async {
+    try {
+      final auth = Provider.of<AuthState>(context, listen: false);
+      final currentUserId = auth.user?['id'];
+
+      final res = await ApiClient().get('/auth/family/children');
+      final kids = (res.data['children'] as List?) ?? [];
+
+      // Sort by XP descending
+      final sortedKids = List<Map<String, dynamic>>.from(kids);
+      sortedKids.sort((a, b) {
+        final xpA = (a['xp'] as num?)?.toInt() ?? 0;
+        final xpB = (b['xp'] as num?)?.toInt() ?? 0;
+        return xpB.compareTo(xpA);
+      });
+
+      final List<Map<String, dynamic>> loaded = [];
+      for (int i = 0; i < sortedKids.length; i++) {
+        final k = sortedKids[i];
+        final isCurrent = k['id'] == currentUserId;
+        loaded.add({
+          'rank': i + 1,
+          'name': isCurrent ? '${k['full_name']} (أنت)' : (k['full_name'] ?? 'بطل مالي'),
+          'avatar': i == 0 ? '👑' : (i == 1 ? '🥈' : (i == 2 ? '🥉' : '👦')),
+          'xp': (k['xp'] as num?)?.toInt() ?? 0,
+          'level': (k['level'] as num?)?.toInt() ?? 1,
+          'streak': (k['streak'] as num?)?.toInt() ?? 0,
+          'isCurrent': isCurrent,
+        });
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _rankings = loaded;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
       appBar: AppBar(
         title: const Text('لوحة شرف الأبطال 🏆'),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            children: [
-              // Top Trophy Banner
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0F2D52), Color(0xFF1E3A8A)],
+        child: RefreshIndicator(
+          onRefresh: _loadLeaderboard,
+          color: AppTheme.emerald,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              children: [
+                // Top Trophy Banner
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF0F2D52), Color(0xFF1E3A8A)],
+                    ),
+                    borderRadius: BorderRadius.circular(22),
                   ),
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: const Column(
-                  children: [
-                    Text('🥇', style: TextStyle(fontSize: 48)),
-                    SizedBox(height: 8),
-                    Text(
-                      'أنت في المركز الأول هذا الأسبوع! 🎉',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'استمر في إنجاز المهام والتحويش للحفاظ على صدارة العائلة',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white70, fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              Expanded(
-                child: ListView.separated(
-                  itemCount: rankings.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final item = rankings[index];
-                    final isCurrent = item['isCurrent'] == true;
-
-                    return Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isCurrent ? AppTheme.gold : AppTheme.cardBorder,
-                          width: isCurrent ? 2 : 1,
+                  child: const Column(
+                    children: [
+                      Text('🏆', style: TextStyle(fontSize: 42)),
+                      SizedBox(height: 8),
+                      Text(
+                        'ترتيب أبطال العائلة',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
                         ),
-                        boxShadow: isCurrent
-                            ? [
-                                BoxShadow(
-                                  color: AppTheme.gold.withOpacity(0.15),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ]
-                            : null,
                       ),
-                      child: Row(
-                        children: [
-                          Text(
-                            item['rank'] == 1
-                                ? '🥇'
-                                : item['rank'] == 2
-                                    ? '🥈'
-                                    : '🥉',
-                            style: const TextStyle(fontSize: 24),
-                          ),
-                          const SizedBox(width: 14),
-                          CircleAvatar(
-                            radius: 22,
-                            backgroundColor: AppTheme.navy.withOpacity(0.08),
-                            child: Text(item['avatar'], style: const TextStyle(fontSize: 22)),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item['name'],
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                    color: isCurrent ? AppTheme.navy : AppTheme.textPrimary,
-                                  ),
-                                ),
-                                Text(
-                                  'المستوى ${item['level']} · ${item['streak']} أيام متتالية 🔥',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Text(
-                            '${item['xp']} XP',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 15,
-                              color: AppTheme.emeraldDark,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                        ],
+                      SizedBox(height: 4),
+                      Text(
+                        'كل ما تنجز مهام وتحوش أكتر، هتجمع نقاط XP وتتصدر المركز الأول!',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
                       ),
-                    );
-                  },
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 20),
+
+                if (_isLoading)
+                  const Expanded(
+                    child: Center(
+                      child: CircularProgressIndicator(color: AppTheme.emerald),
+                    ),
+                  )
+                else if (_rankings.isEmpty)
+                  Expanded(
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppTheme.cardBorder),
+                        ),
+                        child: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('🌟', style: TextStyle(fontSize: 36)),
+                            SizedBox(height: 8),
+                            Text(
+                              'أنت أول بطل مسجل في عائلتك!',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.navy,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'أنجز المهام وجمّع النقاط لتتصدر القمة.',
+                              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: _rankings.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final r = _rankings[index];
+                        final bool isCurrent = r['isCurrent'] ?? false;
+
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: isCurrent ? AppTheme.emerald : AppTheme.cardBorder,
+                              width: isCurrent ? 2 : 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: isCurrent
+                                    ? AppTheme.emerald.withOpacity(0.08)
+                                    : Colors.black.withOpacity(0.02),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: r['rank'] == 1
+                                      ? AppTheme.gold
+                                      : (r['rank'] == 2
+                                          ? const Color(0xFFE2E8F0)
+                                          : (r['rank'] == 3
+                                              ? const Color(0xFFFED7AA)
+                                              : Colors.grey.shade100)),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${r['rank']}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      color: r['rank'] == 1 ? AppTheme.navyDark : AppTheme.navy,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Text(r['avatar'], style: const TextStyle(fontSize: 24)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      r['name'],
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                        color: isCurrent ? AppTheme.emeraldDark : AppTheme.navy,
+                                      ),
+                                    ),
+                                    Text(
+                                      'المستوى ${r['level']} · ${r['streak']} أيام متتالية 🔥',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppTheme.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.emerald.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '${r['xp']} XP',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    color: AppTheme.emeraldDark,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

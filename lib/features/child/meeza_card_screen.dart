@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../config/theme.dart';
+import '../../core/auth_state.dart';
+import '../../core/api_client.dart';
 import '../../models/card_model.dart';
 import '../../widgets/meeza_card_widget.dart';
 
@@ -11,61 +14,58 @@ class MeezaCardScreen extends StatefulWidget {
 }
 
 class _MeezaCardScreenState extends State<MeezaCardScreen> {
+  bool _isLoading = true;
+  double? _dailyLimit;
+  double _balance = 0.0;
+  List<dynamic> _transactions = [];
+
   CardModel _card = CardModel(
-    id: 'c_lotfy',
-    userId: 'u_lotfy',
+    id: '',
+    userId: '',
     cardNumber: '5061 •••• •••• 1234',
-    cardholderName: 'Lotfy Hassan',
+    cardholderName: 'FinFamily Hero',
     status: 'active',
     expiryDate: '12/28',
   );
 
-  final List<Map<String, dynamic>> _cardTransactions = [
-    {
-      'merchant': 'Metro Market',
-      'amount': -28.5,
-      'category': 'بقالة وسوبرماركت',
-      'icon': '🛒',
-      'date': 'اليوم 09:12 ص',
-    },
-    {
-      'merchant': 'School Canteen',
-      'amount': -12.0,
-      'category': 'كانتين المدرسة',
-      'icon': '🥪',
-      'date': 'أمس 12:30 م',
-    },
-    {
-      'merchant': 'كتاب وقلم Bookstore',
-      'amount': -35.0,
-      'category': 'أدوات دراسية',
-      'icon': '📚',
-      'date': '24 يوليو 11:20 ص',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadCardData();
+  }
 
-  void _toggleFreeze() {
-    setState(() {
-      _card = CardModel(
-        id: _card.id,
-        userId: _card.userId,
-        cardNumber: _card.cardNumber,
-        cardholderName: _card.cardholderName,
-        status: _card.isFrozen ? 'active' : 'frozen',
-        expiryDate: _card.expiryDate,
-      );
-    });
+  Future<void> _loadCardData() async {
+    try {
+      final auth = Provider.of<AuthState>(context, listen: false);
+      final walletRes = await ApiClient().get('/wallet/me');
+      final data = walletRes.data;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _card.isFrozen
-              ? 'تم تجميد الكارت مؤقتاً لحمايته 🔒'
-              : 'تم تفعيل الكارت وأصبح جاهزاً للشراء 🔓',
-        ),
-        backgroundColor: _card.isFrozen ? AppTheme.coral : AppTheme.emerald,
-      ),
-    );
+      // Load child transactions
+      List<dynamic> txList = [];
+      try {
+        final txRes = await ApiClient().get('/transactions/mine');
+        txList = (txRes.data as List?) ?? [];
+      } catch (_) {}
+
+      if (!mounted) return;
+      setState(() {
+        _balance = (data['balance'] as num?)?.toDouble() ?? 0.0;
+        _dailyLimit = (data['daily_limit'] as num?)?.toDouble();
+        _card = CardModel(
+          id: data['id'] ?? '',
+          userId: data['owner_id'] ?? auth.user?['id'] ?? '',
+          cardNumber: data['card_number'] ?? '5061 •••• •••• 1234',
+          cardholderName: auth.user?['full_name'] ?? 'FinFamily Hero',
+          status: data['card_status'] ?? 'active',
+          expiryDate: '12/28',
+        );
+        _transactions = txList;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -76,147 +76,197 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
         title: const Text('كارت ميزة الخاص بي 💳'),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 3D Flip Card
-              MeezaCardWidget(
-                card: _card,
-                showControls: true,
-                onFreezeToggle: _toggleFreeze,
-              ),
-              const SizedBox(height: 24),
-
-              // Spending Limit Indicator
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppTheme.cardBorder),
+        child: RefreshIndicator(
+          onRefresh: _loadCardData,
+          color: AppTheme.emerald,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 3D Flip Card
+                MeezaCardWidget(
+                  card: _card,
+                  showControls: false,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'مصروفك اليومي المسموح به',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.navy,
-                          ),
-                        ),
-                        Text(
-                          'صرفت 40.5 من 100 ج.م',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.emeraldDark,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: const LinearProgressIndicator(
-                        value: 0.405,
-                        minHeight: 8,
-                        backgroundColor: Color(0xFFE2E8F0),
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(AppTheme.emerald),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'فاضلك 59.50 ج.م تقدر تصرفهم النهاردة 👍',
-                      style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              // Recent Card Activity
-              const Text(
-                'مشتريات الكارت الأخيرة:',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.navy,
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _cardTransactions.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final t = _cardTransactions[index];
-                  return Container(
-                    padding: const EdgeInsets.all(14),
+                // Spending Limit Indicator (if set by parent)
+                if (_dailyLimit != null && _dailyLimit! > 0)
+                  Container(
+                    padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: AppTheme.cardBorder),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: AppTheme.navy.withOpacity(0.06),
-                                shape: BoxShape.circle,
+                            const Text(
+                              'حد الصرف اليومي المحدد',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.navy,
                               ),
-                              child: Text(t['icon'],
-                                  style: const TextStyle(fontSize: 20)),
                             ),
-                            const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  t['merchant'],
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                Text(
-                                  '${t['category']} · ${t['date']}',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: AppTheme.textMuted,
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              '${_dailyLimit!.toStringAsFixed(0)} ج.م',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.emeraldDark,
+                              ),
                             ),
                           ],
                         ),
-                        Text(
-                          '${(t['amount'] as double).toStringAsFixed(1)} ج.م',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 14,
-                            color: AppTheme.coral,
+                        const SizedBox(height: 10),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: const LinearProgressIndicator(
+                            value: 0.35,
+                            minHeight: 8,
+                            backgroundColor: Color(0xFFE2E8F0),
+                            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.emerald),
                           ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'مضبوط بمعرفة ولي الأمر لحمايتك وتنظيم مشترياتك 👍',
+                          style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                         ),
                       ],
                     ),
-                  );
-                },
-              ),
-            ],
+                  ),
+
+                const SizedBox(height: 24),
+
+                // Recent Card Activity
+                const Text(
+                  'مشتريات وعمليات الكارت الأخيرة:',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.navy,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                if (_isLoading)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: CircularProgressIndicator(color: AppTheme.emerald),
+                    ),
+                  )
+                else if (_transactions.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: AppTheme.cardBorder),
+                    ),
+                    child: const Column(
+                      children: [
+                        Text('💳', style: TextStyle(fontSize: 34)),
+                        SizedBox(height: 8),
+                        Text(
+                          'لا توجد عمليات مسجلة بعد',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: AppTheme.navy,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'ستظهر مشتريات كارت ميزة والتحويلات هنا تلقائياً.',
+                          style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _transactions.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final t = _transactions[index];
+                      final isCredit = t['direction'] == 'credit';
+                      final amount = (t['amount'] as num?)?.toDouble() ?? 0.0;
+                      final desc = t['description'] ?? 'عملية كارت';
+
+                      return Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppTheme.cardBorder),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: isCredit
+                                        ? AppTheme.emerald.withOpacity(0.1)
+                                        : AppTheme.navy.withOpacity(0.06),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    isCredit ? '📥' : '🛒',
+                                    style: const TextStyle(fontSize: 18),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      desc,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      isCredit ? 'إيداع في المحفظة' : 'مشتريات كارت ميزة',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppTheme.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            Text(
+                              '${isCredit ? "+" : "-"}${amount.toStringAsFixed(1)} ج.م',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 14,
+                                color: isCredit ? AppTheme.emerald : AppTheme.coral,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
           ),
         ),
       ),
