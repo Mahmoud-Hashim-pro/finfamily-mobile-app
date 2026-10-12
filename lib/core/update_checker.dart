@@ -10,8 +10,8 @@ import 'api_client.dart';
 
 class UpdateChecker {
   // Current installed app version & build
-  static const String currentVersion = '1.0.4';
-  static const int currentBuildNumber = 5;
+  static const String currentVersion = '1.0.5';
+  static const int currentBuildNumber = 6;
 
   static Future<void> checkForUpdates(BuildContext context) async {
     try {
