@@ -645,7 +645,8 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
                         ),
                     ],
                   ),
-                );
+                ),
+              );
               },
             ),
 
