@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/theme.dart';
+import '../../core/auth_state.dart';
+import '../../core/api_client.dart';
+import '../../core/error_handler.dart';
 
 class LearnScreen extends StatefulWidget {
   const LearnScreen({super.key});
@@ -13,81 +18,204 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
 
   final List<Map<String, dynamic>> _lessons = [
     {
+      'id': 'les_1',
       'title': 'أساسيات المال والنقود',
       'icon': '🪙',
       'xp': 100,
       'status': 'completed',
       'desc': 'ما هو المال ولماذا نستخدمه في حياتنا اليومية؟',
+      'content': 'النقود هي وسيلة للتبادل بدلاً من المقايضة القديمة. نستخدمها لشراء ما نحتاجه ولتحديد قيمة الأشياء، كما نستخدمها للادخار للمستقبل.',
     },
     {
+      'id': 'les_2',
       'title': 'الاحتياجات مقابل الرغبات',
       'icon': '⚖️',
       'xp': 120,
-      'status': 'completed',
+      'status': 'in_progress',
       'desc': 'كيف تفرق بين ما تحتاجه للعيش وما تريده للتسلية.',
+      'content': 'الاحتياجات هي الضروريات التي لا غنى عنها مثل الطعام، الشراب، المسكن، والعلاج. أما الرغبات فهي الأشياء الكمالية مثل الألعاب والحلوى الزائدة.',
     },
     {
+      'id': 'les_3',
       'title': 'كيف تضع ميزانية لنفسك',
       'icon': '📊',
       'xp': 150,
-      'status': 'in_progress',
+      'status': 'locked',
       'desc': 'طريقة تقسيم مصروفك الأسبوعي بذكاء.',
+      'content': 'الميزانية هي خطتك المالية. قسم مصروفك لقاعدة 50/30/20: 50% لاحتياجاتك، 30% لرغباتك، و20% ادخرها دائماً في حصالتك الذكية.',
     },
     {
+      'id': 'les_4',
       'title': 'سحر الادخار والاستثمار',
       'icon': '🐷',
       'xp': 150,
       'status': 'locked',
       'desc': 'كيف تجعل الجنيهات القليلة تبني أحلامك الكبيرة.',
+      'content': 'الادخار المنتظم هو بوابتك لتحقيق أهدافك الكبيرة لشراء ما تحلم به في المستقبل دون استدانة أو إحراج.',
     },
     {
+      'id': 'les_5',
       'title': 'المدفوعات الرقمية وكارت ميزة',
       'icon': '💳',
       'xp': 140,
       'status': 'locked',
       'desc': 'كيف يعمل كارتك البنكي والدفع بدون تلامس.',
+      'content': 'كارت ميزة يتيح لك الدفع الإلكتروني الآمن في المحلات وعبر الإنترنت بدون حمل نقود ورقية قد تضيع منك.',
     },
     {
+      'id': 'les_6',
       'title': 'الأمان ومكافحة الاحتيال أونلاين',
       'icon': '🛡️',
       'xp': 160,
       'status': 'locked',
       'desc': 'حافظ على رقم الـ PIN السري ولا تشاركه مع أحد.',
+      'content': 'رقمك السري PIN وكود الـ CVV خلف الكارت سريان تماماً! لا تخبر بهما أي شخص أو تشاركهما على الرسائل إطلاقاً.',
     },
   ];
 
   final List<Map<String, dynamic>> _games = [
     {
-      'id': 'g1',
+      'id': 'gm1',
+      'title': 'محاكي التسوق الذكي (Shopping Simulator)',
+      'icon': '🛒',
+      'reward': '60 XP',
+      'base_xp': 60,
+      'color': AppTheme.navy,
+      'desc': 'معاك ميزانية محددة.. اشترِ احتياجات العائلة دون تجاوز الميزانية.',
+      'question': 'ميزانيتك 100 ج.م، وتريد شراء سلع ضرورية: حليب (30 ج) وخبز (20 ج) ولعبة (70 ج):',
+      'optA': 'شراء الحليب والخبز فقط (50 ج.م) والادخار ✅',
+      'optB': 'شراء اللعبة واستدانة الباقي ❌',
+      'isCorrectA': true,
+    },
+    {
+      'id': 'gm2',
+      'title': 'تحدي الميزانية (Budget Challenge)',
+      'icon': '📊',
+      'reward': '70 XP',
+      'base_xp': 70,
+      'color': AppTheme.emerald,
+      'desc': 'قسّم مصروفك الأسبوعي بذكاء بين الاحتياجات والادخار.',
+      'question': 'أفضل قاعدة ذهبية لتقسيم المصروف الأسبوعي هي:',
+      'optA': '50% احتياجات، 30% رغبات، 20% ادخار ✅',
+      'optB': 'صرف 100% في أول يومين ❌',
+      'isCorrectA': true,
+    },
+    {
+      'id': 'gm3',
       'title': 'احتياج ولا رغبة؟ (Needs vs Wants)',
       'icon': '⚖️',
-      'reward': '60 XP',
-      'color': AppTheme.gold,
-      'desc': 'صنف العناصر بسرعة: هل هي أساسية أم كمالية؟',
-    },
-    {
-      'id': 'g2',
-      'title': 'تخمين الأسعار (Guess the Price)',
-      'icon': '🏷️',
       'reward': '50 XP',
+      'base_xp': 50,
+      'color': AppTheme.gold,
+      'desc': 'صنف العناصر بسرعة: هل هي أساسية للعيش أم كمالية؟',
+      'question': 'شراء وجبة طعام صحية ومياه شرب يعتبر:',
+      'optA': 'احتياج أساسي وضروري ✅',
+      'optB': 'رغبة كمالية وترفيه ❌',
+      'isCorrectA': true,
+    },
+    {
+      'id': 'gm4',
+      'title': 'تخمين الأسعار (Guess Price)',
+      'icon': '🏷️',
+      'reward': '40 XP',
+      'base_xp': 40,
+      'color': AppTheme.coral,
+      'desc': 'خمن السعر الأقرب للمشتريات اليومية لتصبح متسوقاً واعياً.',
+      'question': 'السعر التقريبي المنطقي لعلبة ألوان خشبية مدرسية جيدة:',
+      'optA': 'حوالي 35 إلى 50 ج.م ✅',
+      'optB': 'حوالي 500 ج.م ❌',
+      'isCorrectA': true,
+    },
+    {
+      'id': 'gm5',
+      'title': 'صياد العملات (Coin Catcher)',
+      'icon': '🪙',
+      'reward': '55 XP',
+      'base_xp': 55,
+      'color': AppTheme.gold,
+      'desc': 'اجمع العملات النقدية وتجنب فخاخ الصرف غير المبرر.',
+      'question': 'إذا حصلت على عيدية 200 ج.م، التصرف الأذكى هو:',
+      'optA': 'وضع جزء منها في حصالة هدفك والتمتع بالباقي ✅',
+      'optB': 'شراء كل الحلوى في المحل دفعة واحدة ❌',
+      'isCorrectA': true,
+    },
+    {
+      'id': 'gm6',
+      'title': 'تصنيف المصاريف (Expense Sorting)',
+      'icon': '📑',
+      'reward': '45 XP',
+      'base_xp': 45,
+      'color': AppTheme.blue,
+      'desc': 'صنف النفقات بحسب أولويتها في الحياة اليومية.',
+      'question': 'دفع فاتورة الكهرباء والإنترنت للمنزل يعتبر:',
+      'optA': 'مصروف أساسي ملزم ✅',
+      'optB': 'مصروف ترفيهي اختياري ❌',
+      'isCorrectA': true,
+    },
+    {
+      'id': 'gm7',
+      'title': 'حساب الباقي (Change Maker)',
+      'icon': '🧮',
+      'reward': '65 XP',
+      'base_xp': 65,
+      'color': AppTheme.purple,
+      'desc': 'احسب الباقي المستحق بدقة لتتأكد من استلام فلوسك كاملة.',
+      'question': 'اشتريت بمبلغ 65 ج.م ودفعت للبائع ورقة فئة 100 ج.م، كم الباقي؟',
+      'optA': '35 ج.م ✅',
+      'optB': '25 ج.م ❌',
+      'isCorrectA': true,
+    },
+    {
+      'id': 'gm8',
+      'title': 'المتسوق الذكي (Smart Shopper)',
+      'icon': '🛍️',
+      'reward': '50 XP',
+      'base_xp': 50,
       'color': AppTheme.emerald,
-      'desc': 'خمن السعر الأقرب للمشتريات اليومية واكسب كوينز.',
+      'desc': 'قارن بين العروض واشترِ السلعة ذات القيمة الحقيقية.',
+      'question': 'عرض 2 بسعر 1 لمنتج لا تحتاجه وسينتهي تاريخه غداً:',
+      'optA': 'تجنبه لأنه إهدار للمال دون فائدة ✅',
+      'optB': 'اشترِه لأنه عليه تخفيض كبير ❌',
+      'isCorrectA': true,
     },
     {
-      'id': 'g3',
-      'title': 'محاكي التسوق الذكي',
-      'icon': '🛒',
-      'reward': '70 XP',
-      'color': AppTheme.navy,
-      'desc': 'معاك ميزانية 100 جنيه.. اشترِ احتياجات العائلة بدون ما تتخطاها.',
-    },
-    {
-      'id': 'g4',
+      'id': 'gm9',
       'title': 'محقق الاحتيال (Scam Detective)',
       'icon': '🕵️',
-      'reward': '80 XP',
+      'reward': '50 XP',
+      'base_xp': 50,
       'color': AppTheme.coral,
-      'desc': 'اكتشف الرسائل المزيفة واحمي فلوسك.',
+      'desc': 'اكتشف الرسائل والمواقع المزيفة واحمي رقم PIN لكارتك.',
+      'question': 'وصلتك رسالة "مبروك كسبت مليون جنيه! أرسل رقم كارت ميزة والـ PIN":',
+      'optA': 'تجاهلها فوراً وأبلغ بابا أو ماما - محاولة احتيال! ✅',
+      'optB': 'إرسال رقم الـ PIN فوراً للحصول على الجائزة ❌',
+      'isCorrectA': true,
+    },
+    {
+      'id': 'gm10',
+      'title': 'المستثمر المستقبلي (Future Investor)',
+      'icon': '📈',
+      'reward': '60 XP',
+      'base_xp': 60,
+      'color': AppTheme.navy,
+      'desc': 'افهم سحر نمو الأموال بالصبر والاستثمار طويل الأمد.',
+      'question': 'الفائدة أو العائد الاستثماري على المدخرات يعني:',
+      'optA': 'مكافأة مالية إضافية تُضاف لفلوسك لأنك ادخرتها بذكاء ✅',
+      'optB': 'خصم بنكي يقلل من رصيدك ❌',
+      'isCorrectA': true,
+    },
+    {
+      'id': 'gm11',
+      'title': 'بطل الادخار (Saving Hero)',
+      'icon': '🐷',
+      'reward': '50 XP',
+      'base_xp': 50,
+      'color': AppTheme.emerald,
+      'desc': 'تحدى نفسك وادخر لشراء حلمك دون استعجال.',
+      'question': 'إذا كنت تريد شراء دراجة بـ 1200 ج.م ومصروفك يسمح بادخار 100 ج شهرياً:',
+      'optA': 'الصبر والادخار لمدة سنة للوصول للهدف بكل فخر ✅',
+      'optB': 'الاستسلام وصرف الفلوس على أشياء صغيرة غير مفيدة ❌',
+      'isCorrectA': true,
     },
   ];
 
@@ -95,6 +223,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadLessonProgress();
   }
 
   @override
@@ -103,7 +232,65 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
     super.dispose();
   }
 
-  void _playMiniGame(Map<String, dynamic> game) {
+  Future<void> _loadLessonProgress() async {
+    try {
+      final auth = Provider.of<AuthState>(context, listen: false);
+      final childId = auth.user?['id']?.toString() ?? 'default';
+      final prefs = await SharedPreferences.getInstance();
+      final completed = prefs.getStringList('completed_lessons_$childId') ?? ['les_1'];
+
+      if (!mounted) return;
+      setState(() {
+        for (int i = 0; i < _lessons.length; i++) {
+          final id = _lessons[i]['id'];
+          if (completed.contains(id)) {
+            _lessons[i]['status'] = 'completed';
+          } else {
+            final prevCompleted = i == 0 || completed.contains(_lessons[i - 1]['id']);
+            _lessons[i]['status'] = prevCompleted ? 'in_progress' : 'locked';
+          }
+        }
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _completeLesson(Map<String, dynamic> lesson) async {
+    final auth = Provider.of<AuthState>(context, listen: false);
+    final childId = auth.user?['id']?.toString() ?? 'default';
+    final prefs = await SharedPreferences.getInstance();
+    final completed = prefs.getStringList('completed_lessons_$childId') ?? ['les_1'];
+
+    final id = lesson['id'] as String;
+    if (!completed.contains(id)) {
+      completed.add(id);
+      await prefs.setStringList('completed_lessons_$childId', completed);
+    }
+
+    await _loadLessonProgress();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('مبروك! أتممت درس "${lesson['title']}" وحصلت على +${lesson['xp']} XP! 🎓'),
+        backgroundColor: AppTheme.emerald,
+      ),
+    );
+  }
+
+  void _openLesson(Map<String, dynamic> lesson) {
+    final isLocked = lesson['status'] == 'locked';
+    if (isLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('الدرس مغلق حالياً 🔒. أنجز الدروس السابقة أولاً لفتحه!'),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
+      return;
+    }
+
+    final isDone = lesson['status'] == 'completed';
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -115,86 +302,234 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(game['icon'], style: const TextStyle(fontSize: 48)),
+            Center(child: Text(lesson['icon'] ?? '📖', style: const TextStyle(fontSize: 48))),
             const SizedBox(height: 12),
             Text(
-              game['title'],
+              lesson['title'] ?? 'درس مالي',
+              textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.navy),
             ),
             const SizedBox(height: 8),
             Text(
-              game['desc'],
+              lesson['desc'] ?? '',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: AppTheme.backgroundLight,
                 borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.cardBorder),
               ),
-              child: const Column(
-                children: [
-                  Text(
-                    'السؤال 1 من 3:',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'شراء كتاب دراسي للمدرسة يعتبر:',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                  ),
-                ],
+              child: Text(
+                lesson['content'] ?? lesson['desc'] ?? '',
+                style: const TextStyle(fontSize: 14, height: 1.6, color: AppTheme.textPrimary),
               ),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('إجابة صحيحة! أحسنت يا بطل +${game['reward']} 🎉'),
-                          backgroundColor: AppTheme.emerald,
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.emerald,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: const Text('احتياج ضروري ✅'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('حاول مرة أخرى! الكتب الدراسية من الاحتياجات الضرورية.'),
-                          backgroundColor: AppTheme.coral,
-                        ),
-                      );
-                    },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: const Text('رغبة ترفيهية ❌'),
-                  ),
-                ),
-              ],
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                if (!isDone) {
+                  _completeLesson(lesson);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isDone ? Colors.grey.shade400 : AppTheme.emerald,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: Text(
+                isDone ? 'تم إنهاء هذا الدرس مسبقاً ✅' : 'فهمت الدرس وأريد المكافأة 🎓 (+${lesson['xp']} XP)',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
           ],
         ),
       ),
     );
+  }
+
+  void _playMiniGame(Map<String, dynamic> game) {
+    bool isSubmitting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(game['icon'], style: const TextStyle(fontSize: 48)),
+              const SizedBox(height: 12),
+              Text(
+                game['title'],
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.navy),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                game['desc'],
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppTheme.backgroundLight,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'سؤال التحدي المالي:',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.navy),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      game['question'] ?? 'ما هو القرار المالي الصحيح؟',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              if (isSubmitting)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(color: AppTheme.emerald),
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          setSheetState(() => isSubmitting = true);
+                          await _submitGameCompletion(ctx, game, isCorrect: true);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.emerald,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: Text(
+                          game['optA'] ?? 'خيار أ ✅',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('حاول مرة أخرى! راجع مبادئ الإدارة المالية الذكية 💡'),
+                              backgroundColor: AppTheme.coral,
+                            ),
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: Text(
+                          game['optB'] ?? 'خيار ب ❌',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitGameCompletion(BuildContext sheetContext, Map<String, dynamic> game, {required bool isCorrect}) async {
+    try {
+      final res = await ApiClient().post(
+        '/games/complete',
+        data: {
+          'game_id': game['id'],
+          'score': isCorrect ? 1.0 : 0.0,
+          'total': 1.0,
+        },
+      );
+
+      final data = res.data;
+      final xpAwarded = data['xp_awarded'] ?? 0;
+      final coinsAwarded = (data['coins_awarded'] as num?)?.toDouble() ?? 0.0;
+      final bool already = data['already_rewarded_today'] == true;
+      final bool leveledUp = data['leveled_up'] == true;
+      final int? newXp = (data['new_xp'] as num?)?.toInt();
+      final int? newLevel = (data['new_level'] as num?)?.toInt();
+      final double? newBalance = (data['new_balance'] as num?)?.toDouble();
+      final int? newStreak = (data['new_streak'] as num?)?.toInt();
+
+      final auth = Provider.of<AuthState>(context, listen: false);
+      auth.updateChildStats(
+        xp: newXp,
+        level: newLevel,
+        streak: newStreak,
+        balance: newBalance,
+      );
+
+      if (sheetContext.mounted) {
+        Navigator.pop(sheetContext);
+      }
+
+      if (!mounted) return;
+
+      String message;
+      if (already) {
+        message = 'أحسنت! أتممت لعبة "${game['title']}". لقد حصلت على جائزة هذه اللعبة اليوم مسبقاً! 🌟';
+      } else {
+        message = 'إجابة صحيحة يا بطل! 🎉 حصلت على +$xpAwarded XP و +${coinsAwarded.toStringAsFixed(1)} ج.م كوينز!';
+        if (leveledUp) {
+          message += ' 🚀 مبروك الترقية للمستوى $newLevel!';
+        }
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: AppTheme.emerald,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      if (sheetContext.mounted) {
+        Navigator.pop(sheetContext);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ApiErrorHandler.getErrorMessage(e)),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
+    }
   }
 
   @override
@@ -229,7 +564,9 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
                 final isDone = l['status'] == 'completed';
                 final isLocked = l['status'] == 'locked';
 
-                return Container(
+                return GestureDetector(
+                  onTap: () => _openLesson(l),
+                  child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,

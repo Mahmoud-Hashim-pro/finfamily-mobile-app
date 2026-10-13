@@ -30,6 +30,7 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
   }
 
   Future<void> _loadChildren() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -38,14 +39,21 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
     try {
       final res = await ApiClient().get(ApiConfig.familyOverview);
       final raw = (res.data['children'] as List<dynamic>?) ?? [];
+      if (!mounted) return;
       setState(() {
         _children = raw;
         if (_children.isNotEmpty) {
-          _selectedChildId = _children.first['id']?.toString();
+          final exists = _children.any((c) => c['id']?.toString() == _selectedChildId);
+          if (!exists) {
+            _selectedChildId = _children.first['id']?.toString();
+          }
+        } else {
+          _selectedChildId = null;
         }
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = ApiErrorHandler.getErrorMessage(e);
@@ -61,11 +69,22 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
   }
 
   Future<void> _sendAllowance() async {
-    final amount = double.tryParse(_amountController.text.trim());
+    final rawText = normalizeArabicDigits(_amountController.text.trim());
+    final amount = double.tryParse(rawText);
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('يرجى إدخال مبلغ صحيح للمصروف'),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
+      return;
+    }
+
+    if (amount > 100000) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('الحد الأقصى للتحويل هو 100,000 ج.م'),
           backgroundColor: AppTheme.coral,
         ),
       );
@@ -154,7 +173,7 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'تحويل فوري إلى كارت ميزة',
+                              'تحويل يدوي فوري إلى كارت ميزة',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
@@ -163,7 +182,7 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
                             ),
                             SizedBox(height: 4),
                             Text(
-                              'يصل المبلغ لحظياً لمحفظة الطفل وكارته البنكي',
+                              'تحويل مباشر يصل لحظياً لمحفظة الطفل وكارته البنكي',
                               style: TextStyle(
                                 color: Colors.white70,
                                 fontSize: 12,

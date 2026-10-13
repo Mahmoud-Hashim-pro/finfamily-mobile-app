@@ -30,6 +30,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -39,6 +40,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       final codeRes = await ApiClient().get(ApiConfig.familyCode);
       final childrenRes = await ApiClient().get(ApiConfig.familyChildren);
 
+      if (!mounted) return;
       setState(() {
         _familyCode = codeRes.data['family_code'] ?? '---';
         _familyName = codeRes.data['family_name'] ?? '';
@@ -46,6 +48,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = ApiErrorHandler.getErrorMessage(e);
@@ -176,8 +179,12 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                       data: {
                         'full_name': name,
                         'pin': pin,
+                        'avatar': selectedAvatar,
                       },
                     );
+
+                    nameController.dispose();
+                    pinController.dispose();
 
                     if (!ctx.mounted) return;
                     Navigator.pop(ctx);
@@ -450,8 +457,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                               radius: 24,
                               backgroundColor:
                                   AppTheme.emerald.withOpacity(0.12),
-                              child: const Text('👦',
-                                  style: TextStyle(fontSize: 26)),
+                              child: Text(c['avatar'] ?? '👦',
+                                  style: const TextStyle(fontSize: 26)),
                             ),
                             const SizedBox(width: 14),
                             Expanded(

@@ -33,9 +33,9 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
   }
 
   Future<void> _lookupFamily() async {
-    final code = _familyCodeController.text.trim();
-    if (code.isEmpty || code.length < 4) {
-      setState(() => _error = 'يرجى كتابة كود العائلة المكون من 6 خانات');
+    final code = _familyCodeController.text.trim().toUpperCase();
+    if (code.length != 6) {
+      setState(() => _error = 'يرجى كتابة كود العائلة المكون من 6 خانات بالضبط');
       return;
     }
 
@@ -47,10 +47,11 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
     try {
       final res = await ApiClient().post(
         ApiConfig.childLookup,
-        data: {'family_code': code.toUpperCase()},
+        data: {'family_code': code},
       );
 
       final list = res.data['children'] as List<dynamic>? ?? [];
+      if (!mounted) return;
       if (list.isEmpty) {
         setState(() {
           _error = 'لم يتم العثور على أطفال مسجلين في هذه العائلة بعد';
@@ -63,6 +64,7 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
         });
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = ApiErrorHandler.getErrorMessage(e);
         _isLookingUp = false;

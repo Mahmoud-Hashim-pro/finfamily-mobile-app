@@ -25,21 +25,48 @@ class _GoalsScreenState extends State<GoalsScreen> {
   }
 
   Future<void> _loadGoals() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final res = await ApiClient().get('/wallet/me');
       final data = res.data;
       final rawGoals = (data['savings_goals'] as List?) ?? [];
 
       final List<GoalModel> loaded = rawGoals.map((g) {
+        final target = (g['target'] as num?)?.toDouble() ?? 100.0;
+        final current = (g['current'] as num?)?.toDouble() ?? 0.0;
+        final remaining = (target - current).clamp(0.0, double.infinity);
+        final pct = target > 0 ? (current / target).clamp(0.0, 1.0) : 0.0;
+
+        final String eta;
+        final String aiNote;
+        if (current >= target) {
+          eta = 'مكتمل بنجاح! 🏆';
+          aiNote = 'مبروك يا بطل! حققت هدفك بالكامل وتقدر تستمتع بيه دلوقتي! 🎉';
+        } else if (pct >= 0.75) {
+          eta = 'خلال أسبوع تقريباً ⚡';
+          aiNote = 'قربت جداً! باقي لك ${remaining.toInt()} ج.م فقط لتحقيق الهدف!';
+        } else if (pct >= 0.4) {
+          eta = 'خلال 2-3 أسابيع ⏳';
+          aiNote = 'ماشي بخطوات ممتازة! واصل إنجاز المهام لزيادة رصيدك.';
+        } else {
+          eta = 'خلال شهر تقريباً 🎯';
+          aiNote = 'بداية رائعة! حوش جزء من مصروفك ومهامك اليومية عشان توصله أسرع.';
+        }
+
         return GoalModel(
-          id: g['id'] ?? '',
+          id: (g['id'] ?? '').toString(),
           name: g['name'] ?? '',
-          target: (g['target'] as num?)?.toDouble() ?? 100.0,
-          current: (g['current'] as num?)?.toDouble() ?? 0.0,
+          target: target,
+          current: current,
           icon: g['icon'] ?? '🎯',
           color: g['color'] ?? '#00B894',
-          eta: 'قريباً',
-          aiNote: 'استمر في التحويش لتحقيق هدفك!',
+          eta: eta,
+          aiNote: aiNote,
         );
       }).toList();
 
@@ -67,16 +94,21 @@ class _GoalsScreenState extends State<GoalsScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: Text('تحويش في "${_goals[index].name}"'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('تحويش في "${_goals[index].name}" 🎯', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: amountController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
                   labelText: 'المبلغ المراد إيداعه (ج.م)',
                   hintText: 'مثلاً: 20',
+                  suffixText: 'ج.م',
+                  filled: true,
+                  fillColor: AppTheme.backgroundLight,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
               if (dialogError != null) ...[
@@ -94,9 +126,14 @@ class _GoalsScreenState extends State<GoalsScreen> {
               onPressed: isDepositing
                   ? null
                   : () async {
-                      final val = double.tryParse(amountController.text.trim()) ?? 0.0;
+                      final raw = normalizeArabicDigits(amountController.text.trim());
+                      final val = double.tryParse(raw) ?? 0.0;
                       if (val <= 0) {
                         setDialogState(() => dialogError = 'يرجى إدخال مبلغ صحيح');
+                        return;
+                      }
+                      if (val > 100000) {
+                        setDialogState(() => dialogError = 'الحد الأقصى للإيداع هو 100,000 ج.م');
                         return;
                       }
 
@@ -130,6 +167,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                         });
                       }
                     },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.emerald),
               child: isDepositing
                   ? const SizedBox(
                       width: 16,
@@ -137,6 +175,176 @@ class _GoalsScreenState extends State<GoalsScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
                   : const Text('إيداع'),
+            ),
+          ],
+        ),
+      ),
+    ).then((_) => amountController.dispose());
+  }
+
+  void _withdrawFromGoal(int index) {
+    final amountController = TextEditingController();
+    bool isSubmitting = false;
+    String? dialogError;
+    final g = _goals[index];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('سحب من "${g.name}" ↩️', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'الرصيد المتوفر في الهدف: ${g.current.toStringAsFixed(1)} ج.م',
+                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'المبلغ المراد سحبه (ج.م)',
+                  hintText: 'مثلاً: 10',
+                  suffixText: 'ج.م',
+                  filled: true,
+                  fillColor: AppTheme.backgroundLight,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 8),
+                Text(dialogError!, style: const TextStyle(color: AppTheme.coral, fontSize: 12)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final raw = normalizeArabicDigits(amountController.text.trim());
+                      final val = double.tryParse(raw) ?? 0.0;
+                      if (val <= 0 || val > g.current) {
+                        setDialogState(() => dialogError = 'يرجى إدخال مبلغ صحيح لا يتجاوز ${g.current} ج.م');
+                        return;
+                      }
+
+                      setDialogState(() {
+                        isSubmitting = true;
+                        dialogError = null;
+                      });
+
+                      try {
+                        try {
+                          await ApiClient().post(
+                            '/wallet/me/goals/${g.id}/withdraw',
+                            data: {'amount': val},
+                          );
+                        } catch (_) {
+                          // Fallback to deposit negative amount
+                          await ApiClient().post(
+                            '/wallet/me/goals/${g.id}/deposit',
+                            data: {'amount': -val},
+                          );
+                        }
+
+                        if (!ctx.mounted) return;
+                        Navigator.pop(ctx);
+                        _loadGoals();
+
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('تم سحب $val ج.م من الهدف وإعادتها لكارت ميزة 💳'),
+                            backgroundColor: AppTheme.navy,
+                          ),
+                        );
+                      } catch (e) {
+                        setDialogState(() {
+                          isSubmitting = false;
+                          dialogError = ApiErrorHandler.getErrorMessage(e);
+                        });
+                      }
+                    },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.navy),
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('سحب للكارت'),
+            ),
+          ],
+        ),
+      ),
+    ).then((_) => amountController.dispose());
+  }
+
+  void _deleteGoal(int index) {
+    final g = _goals[index];
+    bool isDeleting = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('حذف هدف الادخار 🗑️', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Text(
+            'هل أنت متأكد من حذف هدف "${g.name}"؟ سيتم استرداد أي رصيد محوش به تلقائياً إلى كارت ميزة الخاص بك.',
+            style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isDeleting ? null : () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: isDeleting
+                  ? null
+                  : () async {
+                      setDialogState(() => isDeleting = true);
+                      try {
+                        await ApiClient().delete('/wallet/me/goals/${g.id}');
+                        if (!ctx.mounted) return;
+                        Navigator.pop(ctx);
+                        _loadGoals();
+
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('تم حذف هدف "${g.name}" بنجاح'),
+                            backgroundColor: AppTheme.coral,
+                          ),
+                        );
+                      } catch (e) {
+                        setDialogState(() => isDeleting = false);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(ApiErrorHandler.getErrorMessage(e)),
+                            backgroundColor: AppTheme.coral,
+                          ),
+                        );
+                      }
+                    },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.coral),
+              child: isDeleting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('تأكيد الحذف'),
             ),
           ],
         ),
@@ -150,6 +358,8 @@ class _GoalsScreenState extends State<GoalsScreen> {
     String selectedIcon = '🎯';
     bool isSubmitting = false;
     String? modalError;
+
+    final icons = ['🎯', '🎮', '🚲', '👟', '📱', '🎧', '🛹', '📚', '👕', '⭐'];
 
     showModalBottomSheet(
       context: context,
@@ -170,64 +380,107 @@ class _GoalsScreenState extends State<GoalsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'إضافة هدف ادخار جديد 🎯',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.navy),
-              ),
-              const SizedBox(height: 16),
               Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: ['🚲', '🎮', '⚽', '🎒', '📱', '👟'].map((emoji) {
-                  final isSelected = selectedIcon == emoji;
-                  return GestureDetector(
-                    onTap: () => setModalState(() => selectedIcon = emoji),
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 6),
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: isSelected ? AppTheme.emerald.withOpacity(0.2) : Colors.grey.shade100,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isSelected ? AppTheme.emerald : Colors.transparent,
-                          width: 2,
-                        ),
-                      ),
-                      child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'تحديد هدف ادخار جديد 🎯',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.navy,
                     ),
-                  );
-                }).toList(),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
-              CustomTextField(
-                controller: nameController,
-                label: 'اسم الهدف الذي ترغب في شرائه',
-                hint: 'مثلاً: حذاء رياضي',
-              ),
-              const SizedBox(height: 12),
-              CustomTextField(
-                controller: targetController,
-                label: 'سعر الهدف بالجنيه',
-                hint: '500',
-                keyboardType: TextInputType.number,
-              ),
+
               if (modalError != null) ...[
-                const SizedBox(height: 8),
-                Text(modalError!, style: const TextStyle(color: AppTheme.coral, fontSize: 12)),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.coral.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(modalError!, style: const TextStyle(color: AppTheme.coral, fontSize: 12)),
+                ),
+                const SizedBox(height: 12),
               ],
+
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  labelText: 'اسم الهدف / ما ترغب بشرائه',
+                  hintText: 'مثلاً: دراجة جديدة، سماعات رأس',
+                  filled: true,
+                  fillColor: AppTheme.backgroundLight,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              TextField(
+                controller: targetController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'المبلغ المستهدف (ج.م)',
+                  hintText: 'مثلاً: 350',
+                  suffixText: 'ج.م',
+                  filled: true,
+                  fillColor: AppTheme.backgroundLight,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              const Text('اختر أيقونة الهدف:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.navy)),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: icons.map((ic) {
+                    final isSel = selectedIcon == ic;
+                    return GestureDetector(
+                      onTap: () => setModalState(() => selectedIcon = ic),
+                      child: Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isSel ? AppTheme.emerald.withOpacity(0.15) : AppTheme.backgroundLight,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: isSel ? AppTheme.emerald : AppTheme.cardBorder, width: isSel ? 2 : 1),
+                        ),
+                        child: Text(ic, style: const TextStyle(fontSize: 22)),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
               const SizedBox(height: 24),
+
               CustomButton(
                 text: 'إنشاء الهدف والبدء في التحويش 🚀',
                 backgroundColor: AppTheme.emerald,
                 isLoading: isSubmitting,
                 onPressed: () async {
                   final name = nameController.text.trim();
-                  final target = double.tryParse(targetController.text.trim()) ?? 0.0;
+                  final rawTarget = normalizeArabicDigits(targetController.text.trim());
+                  final target = double.tryParse(rawTarget) ?? 0.0;
+
                   if (name.isEmpty) {
-                    setModalState(() => modalError = 'يرجى إدخال اسم الهدف');
+                    setModalState(() => modalError = 'اكتب اسم الشيء الذي تريد تحويش ثمنه');
                     return;
                   }
                   if (target <= 0) {
-                    setModalState(() => modalError = 'يرجى إدخال مبلغ صحيح للهدف');
+                    setModalState(() => modalError = 'أدخل المبلغ المستهدف بشكل صحيح');
+                    return;
+                  }
+                  if (target > 1000000) {
+                    setModalState(() => modalError = 'الحد الأقصى للهدف هو 1,000,000 ج.م');
                     return;
                   }
 
@@ -243,7 +496,6 @@ class _GoalsScreenState extends State<GoalsScreen> {
                         'name': name,
                         'target': target,
                         'icon': selectedIcon,
-                        'color': '#00B894',
                       },
                     );
 
@@ -270,7 +522,10 @@ class _GoalsScreenState extends State<GoalsScreen> {
           ),
         ),
       ),
-    );
+    ).then((_) {
+      nameController.dispose();
+      targetController.dispose();
+    });
   }
 
   @override
@@ -372,6 +627,37 @@ class _GoalsScreenState extends State<GoalsScreen> {
                     child: Padding(
                       padding: EdgeInsets.all(32),
                       child: CircularProgressIndicator(color: AppTheme.emerald),
+                    ),
+                  )
+                else if (_errorMessage != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.red.shade100),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.error_outline, size: 44, color: Colors.redAccent),
+                        const SizedBox(height: 12),
+                        Text(
+                          _errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 13, color: AppTheme.navy, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _loadGoals,
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('إعادة المحاولة'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.emerald,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
                   )
                 else if (_goals.isEmpty)
@@ -496,10 +782,45 @@ class _GoalsScreenState extends State<GoalsScreen> {
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12),
                                       ),
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                     ),
                                     child: const Text('تحويش +', style: TextStyle(fontSize: 12)),
                                   ),
+                                const SizedBox(width: 4),
+                                PopupMenuButton<String>(
+                                  icon: const Icon(Icons.more_vert, size: 20, color: AppTheme.textMuted),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                  onSelected: (val) {
+                                    if (val == 'withdraw') {
+                                      _withdrawFromGoal(index);
+                                    } else if (val == 'delete') {
+                                      _deleteGoal(index);
+                                    }
+                                  },
+                                  itemBuilder: (ctx) => [
+                                    PopupMenuItem(
+                                      value: 'withdraw',
+                                      enabled: g.current > 0,
+                                      child: const Row(
+                                        children: [
+                                          Icon(Icons.arrow_back, size: 18, color: AppTheme.navy),
+                                          SizedBox(width: 8),
+                                          Text('سحب مبالغ للكارت ↩️', style: TextStyle(fontSize: 12)),
+                                        ],
+                                      ),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'delete',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.delete_outline, size: 18, color: AppTheme.coral),
+                                          SizedBox(width: 8),
+                                          Text('حذف الهدف 🗑️', style: TextStyle(fontSize: 12, color: AppTheme.coral)),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
                             const SizedBox(height: 14),

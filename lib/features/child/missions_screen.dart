@@ -23,6 +23,11 @@ class _MissionsScreenState extends State<MissionsScreen> {
   }
 
   Future<void> _loadMissions() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final res = await ApiClient().get('/missions/mine');
       final rawList = (res.data as List?) ?? [];
@@ -32,10 +37,12 @@ class _MissionsScreenState extends State<MissionsScreen> {
           id: m['id'] ?? '',
           title: m['title'] ?? 'مهمة عائلية',
           description: m['description'] ?? '',
-          rewardAmount: (m['reward_egp'] as num?)?.toDouble() ?? 0.0,
-          rewardXp: (m['reward_points'] as num?)?.toInt() ?? 0,
+          rewardAmount: ((m['reward_egp'] ?? m['reward'] ?? m['reward_amount'] ?? 0.0) as num).toDouble(),
+          rewardXp: ((m['reward_coins'] ?? m['reward_points'] ?? m['reward_xp'] ?? 50) as num).toInt(),
           status: m['status'] ?? 'pending',
           kind: m['kind'] ?? 'chore',
+          proofText: m['proof_text'] ?? m['proof'],
+          proofUrl: m['proof_url'],
         );
       }).toList();
 
@@ -56,6 +63,7 @@ class _MissionsScreenState extends State<MissionsScreen> {
 
   void _submitMission(int index) {
     final proofController = TextEditingController();
+    final proofUrlController = TextEditingController();
     bool isSubmitting = false;
     String? dialogError;
 
@@ -64,32 +72,49 @@ class _MissionsScreenState extends State<MissionsScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           title: Text('تأكيد إنجاز "${_missions[index].title}"'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'اكتب رسالة أو إثبات بسيط لبابا وماما أنك أنجزت المهمة:',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: proofController,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'تفاصيل الإنجاز',
-                  hintText: 'مثلاً: خلصت الواجب وذاكرت تمام يا بابا! 👍',
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'اكتب رسالة أو إثبات لبابا وماما بأنك أنجزت المهمة:',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                 ),
-              ),
-              if (dialogError != null) ...[
-                const SizedBox(height: 8),
-                Text(dialogError!, style: const TextStyle(color: AppTheme.coral, fontSize: 12)),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: proofController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'تفاصيل الإنجاز *',
+                    hintText: 'مثلاً: رتبت سريري وغرفتي تمام يا ماما! 👍',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: proofUrlController,
+                  decoration: const InputDecoration(
+                    labelText: 'رابط صورة أو إثبات (اختياري)',
+                    hintText: 'https://...',
+                    prefixIcon: Icon(Icons.link, size: 18),
+                  ),
+                ),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(dialogError!, style: const TextStyle(color: AppTheme.coral, fontSize: 12)),
+                ],
               ],
-            ],
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+              onPressed: isSubmitting
+                  ? null
+                  : () {
+                      proofController.dispose();
+                      proofUrlController.dispose();
+                      Navigator.pop(ctx);
+                    },
               child: const Text('إلغاء'),
             ),
             ElevatedButton(
@@ -97,6 +122,7 @@ class _MissionsScreenState extends State<MissionsScreen> {
                   ? null
                   : () async {
                       final proof = proofController.text.trim();
+                      final proofUrl = proofUrlController.text.trim();
                       if (proof.isEmpty) {
                         setDialogState(() => dialogError = 'اكتب كلمة توضح أنك أنجزت المهمة');
                         return;
@@ -111,8 +137,15 @@ class _MissionsScreenState extends State<MissionsScreen> {
                         final m = _missions[index];
                         await ApiClient().post(
                           '/missions/${m.id}/submit',
-                          data: {'proof_text': proof},
+                          data: {
+                            'proof_text': proof,
+                            if (proofUrl.isNotEmpty) 'proof_url': proofUrl,
+                            'note': proof,
+                          },
                         );
+
+                        proofController.dispose();
+                        proofUrlController.dispose();
 
                         if (!ctx.mounted) return;
                         Navigator.pop(ctx);
@@ -229,6 +262,37 @@ class _MissionsScreenState extends State<MissionsScreen> {
                     child: Padding(
                       padding: EdgeInsets.all(32),
                       child: CircularProgressIndicator(color: AppTheme.emerald),
+                    ),
+                  )
+                else if (_errorMessage != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.red.shade100),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.error_outline, size: 44, color: Colors.redAccent),
+                        const SizedBox(height: 12),
+                        Text(
+                          _errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 13, color: AppTheme.navy, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _loadMissions,
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('إعادة المحاولة'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.emerald,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
                   )
                 else if (_missions.isEmpty)

@@ -69,10 +69,28 @@ class _ChildHomeScreenState extends State<ChildHomeScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthState>(context);
     final childName = auth.user?['full_name'] ?? 'بطل مالي';
+    final String avatar = auth.user?['avatar'] ?? '👦';
     final int level = (auth.user?['level'] as num?)?.toInt() ?? 1;
     final int xp = (auth.user?['xp'] as num?)?.toInt() ?? 0;
-    final int xpToNext = (level * 500) > 0 ? (level * 500) : 500;
     final int streak = (auth.user?['streak'] as num?)?.toInt() ?? 1;
+
+    // Backend LEVEL_THRESHOLDS = [(1, 0), (2, 400), (3, 900), (4, 1600), (5, 2500), (6, 3600), (7, 5000), (8, 7000)]
+    const thresholds = [0, 400, 900, 1600, 2500, 3600, 5000, 7000];
+    int currentFloor = 0;
+    int nextCeiling = 400;
+    if (level >= 1 && level <= thresholds.length) {
+      currentFloor = thresholds[level - 1];
+      if (level < thresholds.length) {
+        nextCeiling = thresholds[level];
+      } else {
+        nextCeiling = currentFloor + 2500;
+      }
+    } else {
+      currentFloor = (level - 1) * 1000;
+      nextCeiling = level * 1000;
+    }
+    final int range = nextCeiling - currentFloor;
+    final double xpProgress = range > 0 ? ((xp - currentFloor) / range).clamp(0.0, 1.0) : 1.0;
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
@@ -100,8 +118,8 @@ class _ChildHomeScreenState extends State<ChildHomeScreen> {
                             color: AppTheme.emerald.withOpacity(0.15),
                             border: Border.all(color: AppTheme.emerald, width: 2),
                           ),
-                          child: const Center(
-                            child: Text('👦', style: TextStyle(fontSize: 28)),
+                          child: Center(
+                            child: Text(avatar, style: const TextStyle(fontSize: 28)),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -155,7 +173,7 @@ class _ChildHomeScreenState extends State<ChildHomeScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // Error message if any
+                // Error message if any (BUG-089)
                 if (_errorMessage != null)
                   Container(
                     margin: const EdgeInsets.only(bottom: 16),
@@ -167,11 +185,18 @@ class _ChildHomeScreenState extends State<ChildHomeScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.info_outline, color: AppTheme.coral, size: 20),
+                        const Icon(Icons.error_outline, color: AppTheme.coral, size: 20),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(_errorMessage!,
-                              style: const TextStyle(color: AppTheme.coral, fontSize: 12)),
+                          child: Text(
+                            _errorMessage!,
+                            style: const TextStyle(color: AppTheme.coral, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: _loadData,
+                          icon: const Icon(Icons.refresh, size: 16, color: AppTheme.coral),
+                          label: const Text('إعادة المحاولة', style: TextStyle(color: AppTheme.coral, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
@@ -213,7 +238,7 @@ class _ChildHomeScreenState extends State<ChildHomeScreen> {
                             ],
                           ),
                           Text(
-                            '$xp / $xpToNext XP',
+                            '$xp / $nextCeiling XP',
                             style: const TextStyle(
                               color: AppTheme.gold,
                               fontWeight: FontWeight.w900,
@@ -227,7 +252,7 @@ class _ChildHomeScreenState extends State<ChildHomeScreen> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: LinearProgressIndicator(
-                          value: xpToNext > 0 ? (xp / xpToNext).clamp(0.0, 1.0) : 0.0,
+                          value: xpProgress,
                           minHeight: 8,
                           backgroundColor: Colors.white24,
                           valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.emerald),

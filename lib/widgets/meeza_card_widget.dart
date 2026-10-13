@@ -97,23 +97,44 @@ class _MeezaCardWidgetState extends State<MeezaCardWidget>
                 ),
               ),
               const SizedBox(width: 12),
-              ElevatedButton.icon(
-                onPressed: widget.onFreezeToggle,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: widget.card.isFrozen
-                      ? AppTheme.emerald
-                      : AppTheme.coral,
+              if (widget.card.isDeactivated)
+                Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.block, size: 18, color: Colors.white70),
+                      SizedBox(width: 6),
+                      Text(
+                        'الكارت ملغي نهائياً',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ElevatedButton.icon(
+                  onPressed: widget.onFreezeToggle,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: widget.card.isFrozen
+                        ? AppTheme.emerald
+                        : AppTheme.coral,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                  icon: Icon(
+                    widget.card.isFrozen ? Icons.lock_open : Icons.lock,
+                    size: 18,
+                  ),
+                  label: Text(
+                    widget.card.isFrozen ? 'إلغاء التجميد' : 'تجميد الكارت',
+                  ),
                 ),
-                icon: Icon(
-                  widget.card.isFrozen ? Icons.lock_open : Icons.lock,
-                  size: 18,
-                ),
-                label: Text(
-                  widget.card.isFrozen ? 'إلغاء التجميد' : 'تجميد الكارت',
-                ),
-              ),
             ],
           ),
         ],
@@ -252,7 +273,9 @@ class _MeezaCardWidgetState extends State<MeezaCardWidget>
 
               // Card Number
               Text(
-                widget.card.cardNumber,
+                widget.card.cardNumber.isNotEmpty
+                    ? widget.card.cardNumber
+                    : '•••• •••• •••• ••••',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,
@@ -274,7 +297,9 @@ class _MeezaCardWidgetState extends State<MeezaCardWidget>
                         style: TextStyle(color: Colors.white54, fontSize: 10),
                       ),
                       Text(
-                        widget.card.cardholderName,
+                        widget.card.cardholderName.isNotEmpty
+                            ? widget.card.cardholderName
+                            : 'FinFamily Member',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 14,
@@ -291,7 +316,10 @@ class _MeezaCardWidgetState extends State<MeezaCardWidget>
                         style: TextStyle(color: Colors.white54, fontSize: 10),
                       ),
                       Text(
-                        widget.card.expiryDate ?? '12/28',
+                        (widget.card.expiryDate != null &&
+                                widget.card.expiryDate!.isNotEmpty)
+                            ? widget.card.expiryDate!
+                            : '--/--',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 13,
@@ -378,7 +406,28 @@ class _MeezaCardWidgetState extends State<MeezaCardWidget>
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'كارت محاكاة رقمي (Simulated Virtual Card)',
+                        style: TextStyle(
+                          color: Colors.amber,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 const Text(
                   'كارت محاكاة تعليمي مخصص للتدريب المالي للأطفال ولا يُستخدم في المعاملات البنكية الحقيقية.',
                   style: TextStyle(

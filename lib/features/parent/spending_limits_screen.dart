@@ -22,25 +22,29 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
   List<dynamic> _children = [];
   String? _selectedChildId;
 
-  double _dailyLimit = 100.0;
-  double _weeklyLimit = 500.0;
-  double _monthlyLimit = 1500.0;
+  double? _dailyLimit = 100.0;
+  double? _weeklyLimit = 500.0;
+  double? _monthlyLimit = 1500.0;
 
   final Map<String, bool> _blockedCategories = {
-    'gaming': true,
-    'fast_food': false,
-    'online_shopping': false,
-    'entertainment': false,
-    'subscriptions': true,
+    'Gaming': false,
+    'Food': false,
+    'Shopping': false,
+    'Entertainment': false,
+    'Electronics': false,
+    'Toys': false,
   };
 
   final Map<String, String> _categoryLabels = {
-    'gaming': 'ألعاب الفيديو والشحن الإلكتروني 🎮',
-    'fast_food': 'الوجبات السريعة والمطاعم 🍔',
-    'online_shopping': 'المشتريات والتسوق أونلاين 🛍️',
-    'entertainment': 'السينما والترفيه 🎬',
-    'subscriptions': 'التطبيقات والاشتراكات الشهرية 📱',
+    'Gaming': 'ألعاب الفيديو والشحن الإلكتروني 🎮',
+    'Food': 'الوجبات السريعة والمطاعم 🍔',
+    'Shopping': 'المشتريات والتسوق أونلاين 🛍️',
+    'Entertainment': 'السينما والترفيه 🎬',
+    'Electronics': 'الأجهزة الإلكترونية والتقنية 📱',
+    'Toys': 'الألعاب والدمى 🧸',
   };
+
+  Set<String> _otherBlockedCategories = {};
 
   @override
   void initState() {
@@ -49,6 +53,7 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -63,9 +68,11 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
         _selectedChildId = widget.initialChildId ?? _children.first['id']?.toString();
         await _loadChildWallet(_selectedChildId!);
       } else {
+        if (!mounted) return;
         setState(() => _isLoading = false);
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = ApiErrorHandler.getErrorMessage(e);
@@ -78,39 +85,60 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
       final res = await ApiClient().get('/wallet/child/$childId');
       final data = res.data;
 
+      if (!mounted) return;
       setState(() {
-        _dailyLimit = ((data['daily_limit'] ?? 100.0) as num).toDouble();
-        _weeklyLimit = ((data['weekly_limit'] ?? 500.0) as num).toDouble();
-        _monthlyLimit = ((data['monthly_limit'] ?? 1500.0) as num).toDouble();
+        _dailyLimit = data['daily_limit'] != null ? (data['daily_limit'] as num).toDouble() : null;
+        _weeklyLimit = data['weekly_limit'] != null ? (data['weekly_limit'] as num).toDouble() : null;
+        _monthlyLimit = data['monthly_limit'] != null ? (data['monthly_limit'] as num).toDouble() : null;
 
         final blockedList = (data['blocked_categories'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+        _otherBlockedCategories = {};
         for (var key in _blockedCategories.keys) {
-          _blockedCategories[key] = blockedList.contains(key);
+          _blockedCategories[key] = false;
+        }
+        for (var cat in blockedList) {
+          final match = _blockedCategories.keys.firstWhere(
+            (k) => k.toLowerCase() == cat.toLowerCase(),
+            orElse: () => '',
+          );
+          if (match.isNotEmpty) {
+            _blockedCategories[match] = true;
+          } else {
+            _otherBlockedCategories.add(cat);
+          }
         }
         _isLoading = false;
+        _errorMessage = null;
       });
-    } catch (_) {
-      setState(() => _isLoading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = ApiErrorHandler.getErrorMessage(e);
+      });
     }
   }
 
   Future<void> _saveLimits() async {
     if (_selectedChildId == null) return;
 
+    if (!mounted) return;
     setState(() => _isSaving = true);
 
     try {
-      final blocked = _blockedCategories.entries
-          .where((e) => e.value)
-          .map((e) => e.key)
-          .toList();
+      final List<String> blocked = List.from(_otherBlockedCategories);
+      for (var entry in _blockedCategories.entries) {
+        if (entry.value) {
+          blocked.add(entry.key);
+        }
+      }
 
       await ApiClient().patch(
         '/wallet/child/$_selectedChildId/limits',
         data: {
-          'daily_limit': _dailyLimit,
-          'weekly_limit': _weeklyLimit,
-          'monthly_limit': _monthlyLimit,
+          'daily_limit': _dailyLimit ?? -1,
+          'weekly_limit': _weeklyLimit ?? -1,
+          'monthly_limit': _monthlyLimit ?? -1,
           'blocked_categories': blocked,
         },
       );
@@ -136,6 +164,114 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
     }
   }
 
+  void _showEditLimitDialog({
+    required String title,
+    required double? currentValue,
+    required ValueChanged<double?> onSave,
+  }) {
+    final controller = TextEditingController(
+      text: currentValue != null ? currentValue.toInt().toString() : '',
+    );
+    bool isUnlimited = currentValue == null;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('بدون حد (غير مقيد)', style: TextStyle(fontSize: 14)),
+                    value: isUnlimited,
+                    activeColor: AppTheme.navy,
+                    onChanged: (val) {
+                      setDialogState(() {
+                        isUnlimited = val ?? false;
+                        if (isUnlimited) controller.clear();
+                      });
+                    },
+                  ),
+                  if (!isUnlimited) ...[
+                    const SizedBox(height: 10),
+                    const Text('القيمة المحددة (ج.م):', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: controller,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        hintText: 'مثال: 150 أو 0 لتعطيل الصرف',
+                        suffixText: 'ج.م',
+                        filled: true,
+                        fillColor: AppTheme.backgroundLight,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      children: [
+                        ActionChip(
+                          label: const Text('0 ج.م (تعطيل الصرف)'),
+                          onPressed: () {
+                            setDialogState(() {
+                              controller.text = '0';
+                            });
+                          },
+                        ),
+                        ActionChip(
+                          label: const Text('50'),
+                          onPressed: () => setDialogState(() => controller.text = '50'),
+                        ),
+                        ActionChip(
+                          label: const Text('200'),
+                          onPressed: () => setDialogState(() => controller.text = '200'),
+                        ),
+                        ActionChip(
+                          label: const Text('500'),
+                          onPressed: () => setDialogState(() => controller.text = '500'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('إلغاء'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (isUnlimited) {
+                    onSave(null);
+                  } else {
+                    final parsed = double.tryParse(controller.text.trim());
+                    if (parsed != null && parsed >= 0) {
+                      onSave(parsed);
+                    } else {
+                      return;
+                    }
+                  }
+                  Navigator.pop(ctx);
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.navy),
+                child: const Text('تأكيد'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -145,7 +281,7 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
       ),
       body: SafeArea(
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator(color: AppTheme.navy))
             : _errorMessage != null
                 ? Center(
                     child: Padding(
@@ -155,9 +291,18 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
                         children: [
                           const Icon(Icons.error_outline, color: AppTheme.coral, size: 48),
                           const SizedBox(height: 12),
-                          Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.coral)),
+                          Text(
+                            _errorMessage!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: AppTheme.coral, fontWeight: FontWeight.bold),
+                          ),
                           const SizedBox(height: 16),
-                          ElevatedButton(onPressed: _loadData, child: const Text('إعادة المحاولة')),
+                          ElevatedButton.icon(
+                            onPressed: _loadData,
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('إعادة المحاولة'),
+                            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.navy, foregroundColor: Colors.white),
+                          ),
                         ],
                       ),
                     ),
@@ -282,7 +427,7 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
                                         ),
                                         SizedBox(height: 4),
                                         Text(
-                                          'الحدود تمنع المعاملات تلقائياً عبر شبكة ميزة إذا تجاوز الطفل سقف المصروف المحدد.',
+                                          'يمكنك تعيين حدود الصرف أو إلغائها أو وضعها 0 لمنع الشراء تماماً عبر بطاقة ميزة.',
                                           style: TextStyle(
                                             color: AppTheme.textSecondary,
                                             fontSize: 11,
@@ -309,6 +454,13 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
                               value: _dailyLimit,
                               max: 500,
                               onChanged: (v) => setState(() => _dailyLimit = v),
+                              onEditCustom: () {
+                                _showEditLimitDialog(
+                                  title: 'الحد الأقصى اليومي',
+                                  currentValue: _dailyLimit,
+                                  onSave: (val) => setState(() => _dailyLimit = val),
+                                );
+                              },
                             ),
                             const SizedBox(height: 12),
 
@@ -317,6 +469,13 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
                               value: _weeklyLimit,
                               max: 2000,
                               onChanged: (v) => setState(() => _weeklyLimit = v),
+                              onEditCustom: () {
+                                _showEditLimitDialog(
+                                  title: 'الحد الأقصى الأسبوعي',
+                                  currentValue: _weeklyLimit,
+                                  onSave: (val) => setState(() => _weeklyLimit = val),
+                                );
+                              },
                             ),
                             const SizedBox(height: 12),
 
@@ -325,6 +484,13 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
                               value: _monthlyLimit,
                               max: 5000,
                               onChanged: (v) => setState(() => _monthlyLimit = v),
+                              onEditCustom: () {
+                                _showEditLimitDialog(
+                                  title: 'الحد الأقصى الشهري',
+                                  currentValue: _monthlyLimit,
+                                  onSave: (val) => setState(() => _monthlyLimit = val),
+                                );
+                              },
                             ),
                             const SizedBox(height: 24),
 
@@ -382,10 +548,23 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
 
   Widget _buildLimitCard({
     required String title,
-    required double value,
+    required double? value,
     required double max,
-    required ValueChanged<double> onChanged,
+    required ValueChanged<double?> onChanged,
+    required VoidCallback onEditCustom,
   }) {
+    final String displayValue;
+    Color valueColor = AppTheme.navy;
+    if (value == null) {
+      displayValue = 'بدون حد (غير مقيد)';
+      valueColor = AppTheme.textSecondary;
+    } else if (value == 0) {
+      displayValue = '0 ج.م (معطل)';
+      valueColor = AppTheme.coral;
+    } else {
+      displayValue = '${value.toInt()} ج.م';
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -403,26 +582,53 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
                 title,
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
               ),
-              Text(
-                '${value.toInt()} ج.م',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                  color: AppTheme.navy,
-                  fontFamily: 'monospace',
+              InkWell(
+                onTap: onEditCustom,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  child: Row(
+                    children: [
+                      Text(
+                        displayValue,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                          color: valueColor,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.edit, size: 14, color: AppTheme.textMuted),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
-          Slider(
-            value: value.clamp(20.0, max),
-            min: 20,
-            max: max,
-            divisions: 20,
-            activeColor: AppTheme.navy,
-            inactiveColor: AppTheme.navy.withOpacity(0.1),
-            onChanged: onChanged,
-          ),
+          if (value != null && value > 0) ...[
+            const SizedBox(height: 6),
+            Slider(
+              value: value.clamp(0.0, max),
+              min: 0,
+              max: max,
+              divisions: 20,
+              activeColor: AppTheme.navy,
+              inactiveColor: AppTheme.navy.withOpacity(0.1),
+              onChanged: onChanged,
+            ),
+          ] else ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: onEditCustom,
+                  icon: const Icon(Icons.tune, size: 16),
+                  label: const Text('تخصيص قيمة الحد أو تغييره'),
+                  style: TextButton.styleFrom(foregroundColor: AppTheme.navy),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

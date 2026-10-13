@@ -24,7 +24,7 @@ class _MfaScreenState extends State<MfaScreen> {
 
   Future<void> _handleVerify() async {
     final code = _codeController.text.trim();
-    if (code.length != 6) {
+    if (code.length != 6 || int.tryParse(code) == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('رمز التحقق يتكون من 6 أرقام'),
@@ -53,6 +53,114 @@ class _MfaScreenState extends State<MfaScreen> {
         ),
       );
     }
+  }
+
+  void _showRecoveryDialog() {
+    final recoveryController = TextEditingController();
+    bool isSubmitting = false;
+    String? dialogError;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('كود استعادة الطوارئ 🔐', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'أدخل أحد أكواد الاستعادة الاحتياطية التي تم إنشاؤها لحسابك بالصيغة XXXX-XXXX',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: recoveryController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  hintText: 'ABCD-1234',
+                  labelText: 'كود الاستعادة (XXXX-XXXX)',
+                  filled: true,
+                  fillColor: AppTheme.backgroundLight,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  dialogError!,
+                  style: const TextStyle(color: AppTheme.coral, fontSize: 12),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () {
+                      recoveryController.dispose();
+                      Navigator.pop(ctx);
+                    },
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final rawCode = recoveryController.text.trim().toUpperCase();
+                      final recoveryRegex = RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}$');
+
+                      if (!recoveryRegex.hasMatch(rawCode)) {
+                        setDialogState(() {
+                          dialogError = 'صيغة كود الاستعادة غير صحيحة، يجب أن يكون مثل: ABCD-1234';
+                        });
+                        return;
+                      }
+
+                      setDialogState(() {
+                        isSubmitting = true;
+                        dialogError = null;
+                      });
+
+                      final auth = Provider.of<AuthState>(context, listen: false);
+                      final success = await auth.loginParentWithRecovery(rawCode);
+
+                      recoveryController.dispose();
+
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+
+                      if (!mounted) return;
+                      if (success) {
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ParentNavShell()),
+                          (route) => false,
+                        );
+                      } else if (auth.errorMessage != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(auth.errorMessage!),
+                            backgroundColor: AppTheme.coral,
+                          ),
+                        );
+                      }
+                    },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.navy),
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('دخول بكود الاستعادة'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -118,48 +226,15 @@ class _MfaScreenState extends State<MfaScreen> {
               const SizedBox(height: 16),
 
               Center(
-                child: TextButton(
-                  onPressed: () {
-                    // Recovery code dialog
-                    _showRecoveryDialog(context);
-                  },
-                  child: const Text('استخدام كود استعادة الطوارئ (Recovery Code)'),
+                child: TextButton.icon(
+                  onPressed: _showRecoveryDialog,
+                  icon: const Icon(Icons.key, size: 18),
+                  label: const Text('استخدام كود استعادة الطوارئ (Recovery Code)'),
                 ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  void _showRecoveryDialog(BuildContext context) {
-    final recoveryController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('كود الاستعادة'),
-        content: TextField(
-          controller: recoveryController,
-          decoration: const InputDecoration(
-            hintText: 'XXXXX-XXXXX',
-            labelText: 'أدخل كود الطوارئ',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _codeController.text = recoveryController.text.trim();
-              _handleVerify();
-            },
-            child: const Text('تحقق'),
-          ),
-        ],
       ),
     );
   }

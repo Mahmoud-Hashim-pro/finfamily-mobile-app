@@ -68,3 +68,20 @@ migrate_working_dir/
 !**/ios/**/default.mode1v3/default.pbxuser
 !**/ios/**/default.mode2v3/default.pbxuser
 !**/ios/**/default.perspectivev3/default.pbxuser
+
+# Security, signing keys, and secrets
+*.jks
+**/*.jks
+*.keystore
+**/*.keystore
+key.properties
+**/key.properties
+.env
+.env.*
+**/.env
+**/.env.*
+!*.env.example
+*.pem
+*.crt
+symbols/
+**/symbols/

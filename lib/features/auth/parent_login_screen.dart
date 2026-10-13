@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/auth_state.dart';
 import '../../config/theme.dart';
+import '../../config/api_config.dart';
+import '../../core/api_client.dart';
+import '../../core/error_handler.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import 'parent_register_screen.dart';
@@ -26,6 +29,225 @@ class _ParentLoginScreenState extends State<ParentLoginScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  void _showForgotPasswordDialog() {
+    final emailController = TextEditingController(text: _emailController.text.trim());
+    bool isSending = false;
+    String? dialogError;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('استعادة كلمة المرور 🔐', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'أدخل بريدك الإلكتروني المسجل وسنرسل لك تعليمات إعادة تعيين كلمة المرور.',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  labelText: 'البريد الإلكتروني',
+                  hintText: 'name@example.com',
+                  prefixIcon: const Icon(Icons.email_outlined, size: 20),
+                  filled: true,
+                  fillColor: AppTheme.backgroundLight,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 8),
+                Text(dialogError!, style: const TextStyle(color: AppTheme.coral, fontSize: 12)),
+              ],
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () {
+                    emailController.dispose();
+                    Navigator.pop(ctx);
+                    _showResetPasswordDialog();
+                  },
+                  child: const Text('لديك رمز استعادة بالفعل؟ اضغط هنا', style: TextStyle(fontSize: 12)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSending
+                  ? null
+                  : () {
+                      emailController.dispose();
+                      Navigator.pop(ctx);
+                    },
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: isSending
+                  ? null
+                  : () async {
+                      final email = emailController.text.trim();
+                      if (email.isEmpty || !email.contains('@')) {
+                        setDialogState(() => dialogError = 'يرجى إدخال بريد إلكتروني صحيح');
+                        return;
+                      }
+
+                      setDialogState(() {
+                        isSending = true;
+                        dialogError = null;
+                      });
+
+                      try {
+                        await ApiClient().post(
+                          ApiConfig.forgotPassword,
+                          data: {'email': email},
+                        );
+
+                        emailController.dispose();
+                        if (!ctx.mounted) return;
+                        Navigator.pop(ctx);
+
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('تم إرسال تعليمات استعادة كلمة المرور إلى $email ✉️'),
+                            backgroundColor: AppTheme.emerald,
+                          ),
+                        );
+                      } catch (e) {
+                        setDialogState(() {
+                          isSending = false;
+                          dialogError = ApiErrorHandler.getErrorMessage(e);
+                        });
+                      }
+                    },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.navy),
+              child: isSending
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('إرسال الرابط'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showResetPasswordDialog() async {
+    final tokenController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    bool isResetting = false;
+    String? dialogError;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('إعادة تعيين كلمة المرور 🔑', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'أدخل رمز الاستعادة المرسل إلى بريدك الإلكتروني مع كلمة المرور الجديدة:',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: tokenController,
+                decoration: InputDecoration(
+                  labelText: 'رمز الاستعادة (Token)',
+                  hintText: 'أدخل الرمز أو الصقه',
+                  filled: true,
+                  fillColor: AppTheme.backgroundLight,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: newPasswordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'كلمة المرور الجديدة',
+                  hintText: '8 أحرف على الأقل',
+                  filled: true,
+                  fillColor: AppTheme.backgroundLight,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 8),
+                Text(dialogError!, style: const TextStyle(color: AppTheme.coral, fontSize: 12)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isResetting ? null : () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: isResetting ? null : () async {
+                final token = tokenController.text.trim();
+                final newPass = newPasswordController.text.trim();
+                if (token.isEmpty || newPass.length < 8) {
+                  setDialogState(() => dialogError = 'يرجى إدخال الرمز وكلمة مرور من 8 أحرف على الأقل');
+                  return;
+                }
+
+                setDialogState(() {
+                  isResetting = true;
+                  dialogError = null;
+                });
+
+                try {
+                  await ApiClient().post(
+                    ApiConfig.resetPassword,
+                    data: {
+                      'token': token,
+                      'new_password': newPass,
+                    },
+                  );
+
+                  if (!ctx.mounted) return;
+                  Navigator.pop(ctx);
+
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('تم إعادة تعيين كلمة المرور بنجاح! يمكنك الآن تسجيل الدخول. 🎉'),
+                      backgroundColor: AppTheme.emerald,
+                    ),
+                  );
+                } catch (e) {
+                  setDialogState(() {
+                    isResetting = false;
+                    dialogError = ApiErrorHandler.getErrorMessage(e);
+                  });
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.emerald),
+              child: isResetting
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('تعيين كلمة المرور'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _handleLogin() async {
@@ -162,13 +384,7 @@ class _ParentLoginScreenState extends State<ParentLoginScreen> {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('تم إرسال رابط الاستعادة إلى بريدك إذا كان مسجلاً'),
-                        ),
-                      );
-                    },
+                    onPressed: _showForgotPasswordDialog,
                     child: const Text('نسيت كلمة المرور؟'),
                   ),
                 ),

@@ -40,6 +40,7 @@ class _ParentCoachScreenState extends State<ParentCoachScreen> {
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
+    if (!mounted) return;
     setState(() {
       _messages.add({'role': 'user', 'text': text.trim()});
       _isTyping = true;
@@ -53,12 +54,14 @@ class _ParentCoachScreenState extends State<ParentCoachScreen> {
         data: {'message': text.trim()},
       );
       final reply = res.data['reply'] ?? res.data['response'] ?? 'أنا هنا لمساعدتك دائماً!';
+      if (!mounted) return;
       setState(() {
         _messages.add({'role': 'assistant', 'text': reply});
         _isTyping = false;
       });
     } catch (e) {
       final errMsg = ApiErrorHandler.getErrorMessage(e);
+      if (!mounted) return;
       setState(() {
         _messages.add({
           'role': 'assistant',

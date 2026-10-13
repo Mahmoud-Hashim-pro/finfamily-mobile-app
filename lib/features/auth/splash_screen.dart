@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/auth_state.dart';
 import '../../core/update_checker.dart';
 import 'onboarding_screen.dart';
+import 'role_select_screen.dart';
 import '../parent/parent_nav_shell.dart';
 import '../child/child_nav_shell.dart';
 
@@ -82,7 +84,17 @@ class _SplashScreenState extends State<SplashScreen>
     if (auth.status == AuthStatus.authenticated) {
       nextScreen = auth.isParent ? const ParentNavShell() : const ChildNavShell();
     } else {
-      nextScreen = const OnboardingScreen();
+      bool onboardingDone = false;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        onboardingDone = prefs.getBool('onboarding_completed') ?? false;
+      } catch (_) {}
+
+      if (onboardingDone) {
+        nextScreen = const RoleSelectScreen();
+      } else {
+        nextScreen = const OnboardingScreen();
+      }
     }
 
     if (!mounted) return;

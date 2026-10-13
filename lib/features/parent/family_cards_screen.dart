@@ -26,6 +26,7 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
   }
 
   Future<void> _loadCards() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -41,19 +42,22 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
           CardModel(
             id: c['id']?.toString() ?? '',
             userId: c['id']?.toString() ?? '',
-            cardNumber: c['card_number']?.toString() ?? '5061 •••• •••• 0000',
+            cardNumber: c['card_number']?.toString() ?? '',
             cardholderName: c['full_name']?.toString() ?? 'بطل مالي',
             status: c['card_status']?.toString() ?? 'active',
-            expiryDate: '12/28',
+            expiryDate: c['card_expiry']?.toString() ??
+                c['expiry_date']?.toString(),
           ),
         );
       }
 
+      if (!mounted) return;
       setState(() {
         _cards = loaded;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = ApiErrorHandler.getErrorMessage(e);
@@ -63,6 +67,16 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
 
   Future<void> _toggleFreeze(int index) async {
     final current = _cards[index];
+    if (current.isDeactivated) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('لا يمكن تنشيط أو تجميد كارت ملغي نهائياً.'),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
+      return;
+    }
     final newStatus = current.isFrozen ? 'active' : 'frozen';
 
     try {
@@ -71,6 +85,7 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
         data: {'card_status': newStatus},
       );
 
+      if (!mounted) return;
       setState(() {
         _cards[index] = CardModel(
           id: current.id,
@@ -224,21 +239,27 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 10, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: card.isFrozen
-                                            ? AppTheme.coral.withOpacity(0.12)
-                                            : AppTheme.emerald
-                                                .withOpacity(0.12),
+                                        color: card.isDeactivated
+                                            ? Colors.grey.withOpacity(0.18)
+                                            : card.isFrozen
+                                                ? AppTheme.coral.withOpacity(0.12)
+                                                : AppTheme.emerald
+                                                    .withOpacity(0.12),
                                         borderRadius:
                                             BorderRadius.circular(12),
                                       ),
                                       child: Text(
-                                        card.isFrozen
-                                            ? 'مجمد 🔒'
-                                            : 'نشط ومفعل ✅',
+                                        card.isDeactivated
+                                            ? 'ملغي نهائياً ⛔'
+                                            : card.isFrozen
+                                                ? 'مجمد 🔒'
+                                                : 'نشط ومفعل ✅',
                                         style: TextStyle(
-                                          color: card.isFrozen
-                                              ? AppTheme.coral
-                                              : AppTheme.emeraldDark,
+                                          color: card.isDeactivated
+                                              ? Colors.grey.shade700
+                                              : card.isFrozen
+                                                  ? AppTheme.coral
+                                                  : AppTheme.emeraldDark,
                                           fontWeight: FontWeight.bold,
                                           fontSize: 12,
                                         ),
@@ -250,7 +271,9 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
                                 MeezaCardWidget(
                                   card: card,
                                   showControls: true,
-                                  onFreezeToggle: () => _toggleFreeze(index),
+                                  onFreezeToggle: card.isDeactivated
+                                      ? null
+                                      : () => _toggleFreeze(index),
                                 ),
                               ],
                             );

@@ -28,8 +28,19 @@ class ApiErrorHandler {
             final messages = detail.map((item) {
               if (item is Map && item.containsKey('msg')) {
                 final loc = item['loc'];
-                final field = loc is List && loc.isNotEmpty ? loc.last : '';
-                return field.isNotEmpty ? '$field: ${item['msg']}' : item['msg'];
+                String field = '';
+                if (loc is List && loc.isNotEmpty) {
+                  // Filter out transport wrapper names ('body', 'query') and integer array indices (e.g. 0, 1)
+                  final stringParts = loc
+                      .where((p) => p is String && p != 'body' && p != 'query' && p != 'path')
+                      .map((p) => p.toString())
+                      .toList();
+                  if (stringParts.isNotEmpty) {
+                    field = stringParts.last;
+                  }
+                }
+                final msg = _translateDetail(item['msg']?.toString() ?? 'خطأ في الإدخال');
+                return field.isNotEmpty ? '$field: $msg' : msg;
               }
               return item.toString();
             }).toList();
@@ -40,47 +51,63 @@ class ApiErrorHandler {
         if (response.statusCode == 429) {
           return 'تم تجاوز الحد المسموح من المحاولات، يرجى الانتظار قليلاً';
         } else if (response.statusCode == 401) {
-          return 'انتهت جلستك أو كلمة المرور غير صحيحة';
+          return 'انتهت جلستك أو كلمة المرور / رمز PIN غير صحيح';
         } else if (response.statusCode == 403) {
           return 'ليس لديك صلاحية للوصول إلى هذا المحتوى';
         } else if (response.statusCode == 404) {
-          return 'العنصر المطلوب غير موجود';
+          return 'العنصر المطلوب غير موجود أو غير مسجل';
         } else if (response.statusCode == 500) {
-          return 'حدث خطأ في الخادم الداخلي، يرجى المحاولة لاحقاً';
+          return 'حدث خطأ في الخادم، يرجى المحاولة لاحقاً';
         }
       }
     }
 
-    return error.toString().replaceAll('Exception:', '').trim();
+    final raw = error.toString().replaceAll('Exception:', '').trim();
+    return _translateDetail(raw);
   }
 
   static String _translateDetail(String detail) {
-    switch (detail.toLowerCase()) {
-      case 'not authenticated':
-        return 'يرجى تسجيل الدخول أولاً';
-      case 'invalid credentials':
-      case 'incorrect email or password':
-      case 'invalid email or password':
-        return 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
-      case 'email already registered':
-        return 'هذا البريد الإلكتروني مسجل بالفعل';
-      case 'invalid pin':
-        return 'رمز الـ PIN غير صحيح';
-      case 'family not found':
-      case 'invalid family code':
-        return 'كود العائلة غير صحيح أو غير موجود';
-      case 'card is frozen':
-        return 'هذا الكارت مجمد حالياً';
-      case 'card is deactivated':
-        return 'هذا الكارت ملغى';
-      case 'insufficient balance':
-        return 'الرصيد غير كافٍ لإتمام العملية';
-      case 'spending limit exceeded':
-        return 'تم تجاوز حد الصرف المسموح به';
-      case 'mfa code invalid':
-        return 'رمز التحقق الثنائي (2FA) غير صحيح';
-      default:
-        return detail;
+    final lower = detail.toLowerCase().trim();
+    if (lower.contains('not authenticated')) return 'يرجى تسجيل الدخول أولاً';
+    if (lower.contains('token expired') ||
+        lower.contains('signature has expired') ||
+        lower.contains('token has expired')) {
+      return 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً';
     }
+    if (lower.contains('invalid credentials') ||
+        lower.contains('incorrect email or password') ||
+        lower.contains('invalid email or password')) {
+      return 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
+    }
+    if (lower.contains('email already registered')) return 'هذا البريد الإلكتروني مسجل بالفعل';
+    if (lower.contains('admin email reserved')) return 'هذا البريد الإلكتروني مخصص لإدارة المنصة';
+    if (lower.contains('invalid pin')) return 'رمز الـ PIN غير صحيح';
+    if (lower.contains('family not found') || lower.contains('family code not found')) {
+      return 'كود العائلة غير صحيح أو غير مسجل';
+    }
+    if (lower.contains('too many attempts')) {
+      return 'تم حظر المحاولات مؤقتاً بسبب تكرار الخطأ، يرجى الانتظار والمحاولة لاحقاً';
+    }
+    if (lower.contains('mfa verification required') ||
+        lower.contains('mfa code invalid') ||
+        lower.contains('invalid authentication code')) {
+      return 'رمز التحقق الثنائي (2FA) غير صحيح أو مطلوب';
+    }
+    if (lower.contains('invalid or already-used recovery code')) {
+      return 'رمز الاسترداد غير صحيح أو تم استخدامه مسبقاً';
+    }
+    if (lower.contains('card is frozen')) return 'هذا الكارت مجمّد حالياً';
+    if (lower.contains('card is deactivated')) return 'هذا الكارت ملغى نهائياً';
+    if (lower.contains('insufficient balance') || lower.contains('not enough balance')) {
+      return 'الرصيد المتاح غير كافٍ لإتمام العملية';
+    }
+    if (lower.contains('spending limit exceeded')) return 'تم تجاوز حد الصرف المسموح به';
+    if (lower.contains('deposit exceeds goal target')) return 'المبلغ يتجاوز المبلغ المطلوب للهدف';
+    if (lower.contains('reset link is invalid') || lower.contains('expired')) {
+      return 'رابط أو رمز إعادة التعيين غير صالح أو منتهي الصلاحية';
+    }
+    if (lower.contains('field required')) return 'هذا الحقل مطلوب';
+    if (lower.contains('string should have at least')) return 'النص قصير جداً، يرجى إدخال المزيد من الأحرف';
+    return detail;
   }
 }

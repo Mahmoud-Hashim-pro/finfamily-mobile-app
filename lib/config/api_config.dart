@@ -1,6 +1,9 @@
 class ApiConfig {
-  // Live Vercel Backend URL
-  static const String baseUrl = 'https://finfamily-backend.vercel.app/api';
+  // Live Vercel Backend URL (configurable via --dart-define=API_BASE_URL=...)
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://finfamily-backend.vercel.app/api',
+  );
   
   // Timeout settings
   static const Duration connectTimeout = Duration(seconds: 30);
@@ -15,31 +18,42 @@ class ApiConfig {
   static const String familyCode = '/auth/family/code';
   static const String familyChildren = '/auth/family/children';
   static const String createChild = '/auth/children';
+  static const String mfaStatus = '/auth/mfa/status';
   static const String mfaSetup = '/auth/mfa/setup';
   static const String mfaEnable = '/auth/mfa/enable';
   static const String mfaVerify = '/auth/mfa/verify';
   static const String mfaDisable = '/auth/mfa/disable';
+  static const String mfaRecoveryRegenerate = '/auth/mfa/recovery-codes/regenerate';
   static const String forgotPassword = '/auth/forgot-password';
   static const String resetPassword = '/auth/reset-password';
+  static const String changePassword = '/auth/parent/change-password';
 
   // Family & Parent endpoints
   static const String familyOverview = '/family/overview';
+  static const String familyInsights = '/family/insights';
+  static const String familyActivity = '/family/activity';
   static const String familyMembers = '/family/members';
   static const String familyCards = '/family/cards';
   static const String allowances = '/family/allowances';
   static const String instantAllowance = '/family/allowances/instant';
   static const String spendingLimits = '/family/spending-limits';
   static const String approvals = '/family/approvals';
-  static const String auditLogs = '/family/audit-logs';
+  static const String auditLogs = '/audit-logs';
+  static const String missionsFamily = '/missions/family';
+  static const String missionsCreate = '/missions';
+  static const String cardPurchasesFamily = '/card/purchases/family';
 
   // Child & Gamification endpoints
   static const String walletMe = '/wallet/me';
   static const String missionsMine = '/missions/mine';
   static const String transactionsMine = '/transactions/mine';
   static const String goalsMe = '/wallet/me/goals';
-  static const String missions = '/family/missions';
-  static const String goals = '/family/goals';
-  static const String transactions = '/family/transactions';
+  static const String gamesComplete = '/games/complete';
+  static const String badgesMine = '/badges/mine';
+  static const String cardPurchasesMine = '/card/purchases/mine';
+  static const String missions = '/missions';
+  static const String goals = '/wallet/me/goals';
+  static const String transactions = '/transactions/mine';
   static const String aiCoach = '/functions/aiCoach';
   static const String appVersion = '/app/version';
 
@@ -50,4 +64,17 @@ class ApiConfig {
   static const String adminDbHealth = '/admin/database/health';
   static const String adminSecurityAlerts = '/admin/security/alerts';
   static const String adminLogin = '/admin/auth/login';
+
+  // Dynamic route helpers
+  static String missionSubmit(String id) => '/missions/$id/submit';
+  static String missionReview(String id) => '/missions/$id/review';
+  static String cardPurchaseReview(String id) => '/card/purchases/$id/review';
+  static String childWallet(String childId) => '/wallet/child/$childId';
+  static String childWalletLimits(String childId) => '/wallet/child/$childId/limits';
+  static String childCardStatus(String childId) => '/wallet/child/$childId/card-status';
+  static String childCardReplace(String childId) => '/wallet/child/$childId/card/replace';
+  static String childAllowance(String childId) => '/wallet/child/$childId/allowance';
+  static String goalDeposit(String goalId) => '/wallet/me/goals/$goalId/deposit';
+  static String goalWithdraw(String goalId) => '/wallet/me/goals/$goalId/withdraw';
+  static String goalDelete(String goalId) => '/wallet/me/goals/$goalId';
 }

@@ -65,3 +65,15 @@ class CustomTextField extends StatelessWidget {
     );
   }
 }
+
+String normalizeArabicDigits(String input) {
+  const arabicIndic = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  const easternArabic = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  var result = input.replaceAll('٫', '.').replaceAll('،', '.').replaceAll(',', '.');
+  for (int i = 0; i < 10; i++) {
+    result = result.replaceAll(arabicIndic[i], i.toString());
+    result = result.replaceAll(easternArabic[i], i.toString());
+  }
+  return result;
+}
+

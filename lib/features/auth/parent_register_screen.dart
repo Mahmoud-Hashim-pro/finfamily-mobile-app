@@ -19,7 +19,9 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
   final _familyNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void dispose() {
@@ -27,6 +29,7 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
     _familyNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -35,9 +38,9 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
 
     final auth = Provider.of<AuthState>(context, listen: false);
     final success = await auth.registerParent(
-      fullName: _nameController.text,
-      familyName: _familyNameController.text,
-      email: _emailController.text,
+      fullName: _nameController.text.trim(),
+      familyName: _familyNameController.text.trim(),
+      email: _emailController.text.trim(),
       password: _passwordController.text,
     );
 
@@ -46,7 +49,7 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('تم إنشاء الحساب بنجاح! مرحباً بك في FinFamily'),
+          content: Text('تم إنشاء الحساب بنجاح! مرحباً بك في FinFamily 🎉'),
           backgroundColor: AppTheme.emerald,
         ),
       );
@@ -122,8 +125,9 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
                   keyboardType: TextInputType.emailAddress,
                   prefixIcon: Icons.email_outlined,
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'يرجى إدخال البريد';
-                    if (!v.contains('@')) return 'صيغة البريد غير صحيحة';
+                    if (v == null || v.trim().isEmpty) return 'يرجى إدخال البريد الإلكتروني';
+                    final emailRegex = RegExp(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$');
+                    if (!emailRegex.hasMatch(v.trim())) return 'صيغة البريد الإلكتروني غير صحيحة';
                     return null;
                   },
                 ),
@@ -132,7 +136,7 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
                 CustomTextField(
                   controller: _passwordController,
                   label: 'كلمة المرور',
-                  hint: '8 أحرف على الأقل',
+                  hint: '8 أحرف على الأقل تشمل حروفاً وأرقاماً',
                   obscureText: _obscurePassword,
                   prefixIcon: Icons.lock_outline,
                   suffixIcon: IconButton(
@@ -142,7 +146,34 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
                     ),
                     onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                   ),
-                  validator: (v) => v != null && v.length >= 8 ? null : 'كلمة المرور يجب ألا تقل عن 8 أحرف',
+                  validator: (v) {
+                    if (v == null || v.length < 8) return 'كلمة المرور يجب ألا تقل عن 8 أحرف';
+                    if (!RegExp(r'[A-Za-z]').hasMatch(v) || !RegExp(r'[0-9]').hasMatch(v)) {
+                      return 'كلمة المرور يجب أن تحتوي على حروف وأرقام معاً';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 18),
+
+                CustomTextField(
+                  controller: _confirmPasswordController,
+                  label: 'تأكيد كلمة المرور',
+                  hint: 'أعد كتابة كلمة المرور',
+                  obscureText: _obscureConfirmPassword,
+                  prefixIcon: Icons.lock_outline,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscureConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                      size: 20,
+                    ),
+                    onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'يرجى تأكيد كلمة المرور';
+                    if (v != _passwordController.text) return 'كلمتا المرور غير متطابقتين';
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 32),
 

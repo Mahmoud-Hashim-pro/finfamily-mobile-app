@@ -21,12 +21,12 @@ class CardModel {
 
   factory CardModel.fromJson(Map<String, dynamic> json) {
     return CardModel(
-      id: json['id'] ?? '',
-      userId: json['user_id'] ?? '',
-      cardNumber: json['card_number'] ?? '5061 •••• •••• 1234',
-      cardholderName: json['cardholder_name'] ?? 'FinFamily Member',
-      status: json['status'] ?? 'active',
-      expiryDate: json['expiry_date'] ?? '12/28',
+      id: json['id']?.toString() ?? '',
+      userId: json['user_id']?.toString() ?? '',
+      cardNumber: json['card_number']?.toString() ?? '',
+      cardholderName: json['cardholder_name']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'unissued',
+      expiryDate: json['expiry_date']?.toString(),
     );
   }
 

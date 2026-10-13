@@ -29,8 +29,16 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
     'يعني إيه كارت ميزة؟ 💳',
   ];
 
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
   Future<void> _ask(String question) async {
     if (question.trim().isEmpty) return;
+    if (!mounted) return;
     setState(() {
       _messages.add({'role': 'user', 'text': question.trim()});
       _isTyping = true;
@@ -45,12 +53,14 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
       final reply = res.data['reply'] ??
           res.data['response'] ??
           'أنا هنا لمساعدتك دائماً يا بطل! 🌟';
+      if (!mounted) return;
       setState(() {
         _messages.add({'role': 'bot', 'text': reply});
         _isTyping = false;
       });
     } catch (e) {
       final errMsg = ApiErrorHandler.getErrorMessage(e);
+      if (!mounted) return;
       setState(() {
         _messages.add({
           'role': 'bot',

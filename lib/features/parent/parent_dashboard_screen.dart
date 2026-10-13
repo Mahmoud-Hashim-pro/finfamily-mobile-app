@@ -9,6 +9,7 @@ import '../../core/error_handler.dart';
 import 'family_cards_screen.dart';
 import 'spending_limits_screen.dart';
 import 'family_members_screen.dart';
+import 'parent_mfa_settings_screen.dart';
 import '../auth/role_select_screen.dart';
 import '../admin/admin_dashboard_screen.dart';
 
@@ -49,6 +50,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -56,6 +58,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
     try {
       final res = await ApiClient().get(ApiConfig.familyOverview);
       final data = res.data;
+      if (!mounted) return;
       setState(() {
         _overview = data;
         _children = data['children'] ?? [];
@@ -63,6 +66,7 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = ApiErrorHandler.getErrorMessage(e);
@@ -176,9 +180,20 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.security, size: 20, color: AppTheme.navy),
+                          tooltip: 'إعدادات الأمان (2FA)',
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const ParentMfaSettingsScreen()),
+                            );
+                          },
+                        ),
                         IconButton(
                           icon: const Icon(Icons.logout, size: 20, color: AppTheme.coral),
+                          tooltip: 'تسجيل الخروج',
                           onPressed: () async {
                             await auth.logout();
                             if (!context.mounted) return;

@@ -9,28 +9,108 @@ import '../config/theme.dart';
 import 'api_client.dart';
 
 class UpdateChecker {
-  // Current installed app version & build
-  static const String currentVersion = '1.0.5';
-  static const int currentBuildNumber = 6;
+  // Current installed app version & build number (aligned with pubspec.yaml)
+  static const String currentVersion = '1.0.6';
+  static const int currentBuildNumber = 7;
 
+  // Singleton guard against concurrent checks or overlapping dialogs
+  static bool _isCheckingOrShowing = false;
+
+  /// Compares semantic versions and build numbers safely.
+  /// Never prompts for downgrades. Returns true ONLY if latest > current.
+  static bool isNewerVersion(String latest, String current, int latestBuild, int currentBuild) {
+    try {
+      final cleanLatest = latest.trim().replaceAll(RegExp(r'^v'), '');
+      final cleanCurrent = current.trim().replaceAll(RegExp(r'^v'), '');
+
+      final lParts = cleanLatest.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      final cParts = cleanCurrent.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+
+      while (lParts.length < 3) {
+        lParts.add(0);
+      }
+      while (cParts.length < 3) {
+        cParts.add(0);
+      }
+
+      for (int i = 0; i < 3; i++) {
+        if (lParts[i] > cParts[i]) return true;
+        if (lParts[i] < cParts[i]) return false;
+      }
+
+      // Versions are identical; compare build numbers
+      if (latestBuild > currentBuild) {
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Strictly validates that the download URL uses HTTPS and belongs to a trusted host.
+  /// Rejects plaintext HTTP and spoofed subdomains.
+  static bool isAllowedDownloadUrl(String url) {
+    try {
+      final uri = Uri.parse(url.trim());
+      if (uri.scheme != 'https') return false;
+
+      final host = uri.host.toLowerCase().trim();
+      if (host.isEmpty) return false;
+
+      const allowedExactHosts = {
+        'github.com',
+        'objects.githubusercontent.com',
+        'raw.githubusercontent.com',
+        'finfamily.app',
+        'api.finfamily.app',
+        'finfamily-backend.vercel.app',
+      };
+
+      if (allowedExactHosts.contains(host)) return true;
+
+      if (host.endsWith('.github.com') ||
+          host.endsWith('.githubusercontent.com') ||
+          host.endsWith('.finfamily.app')) {
+        return true;
+      }
+
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Checks backend for available updates and presents an undismissible dialog for mandatory updates.
   static Future<void> checkForUpdates(BuildContext context) async {
+    if (_isCheckingOrShowing) return;
+    _isCheckingOrShowing = true;
+
     try {
       final res = await ApiClient().get(ApiConfig.appVersion);
       final data = res.data;
 
-      final latestBuild = (data['build_number'] as num?)?.toInt() ?? 5;
-      final latestVersion = data['latest_version'] ?? '1.0.4';
-      final downloadUrl = data['download_url'] ??
-          'https://github.com/Mahmoud-Hashim-pro/finfamily-mobile-app/releases/latest/download/app-release.apk';
-      final releaseNotes = data['release_notes'] ??
-          'يتضمن هذا التحديث تحسينات أمنية وإصلاحات وتحديثات جديدة.';
-      final isMandatory = (data['is_mandatory'] as bool?) ?? false;
+      if (data == null || data is! Map) {
+        return;
+      }
 
-      final hasUpdate = latestBuild > currentBuildNumber ||
-          latestVersion != currentVersion;
+      final latestBuild = (data['build_number'] as num?)?.toInt() ?? currentBuildNumber;
+      final latestVersion = (data['latest_version'] ?? currentVersion).toString();
+      final downloadUrl = (data['download_url'] ??
+          'https://github.com/Mahmoud-Hashim-pro/finfamily-mobile-app/releases/latest/download/app-release.apk').toString();
+      final releaseNotes = (data['release_notes'] ??
+          'يتضمن هذا التحديث تحسينات أمنية وإصلاحات وتحديثات جديدة.').toString();
+      final isMandatory = (data['is_mandatory'] as bool?) ?? false;
+      final expectedSize = (data['file_size'] as num?)?.toInt();
+
+      if (!isAllowedDownloadUrl(downloadUrl)) {
+        return;
+      }
+
+      final hasUpdate = isNewerVersion(latestVersion, currentVersion, latestBuild, currentBuildNumber);
 
       if (hasUpdate && context.mounted) {
-        showDialog(
+        await showDialog(
           context: context,
           barrierDismissible: !isMandatory,
           builder: (ctx) => _InAppUpdateDialog(
@@ -39,11 +119,14 @@ class UpdateChecker {
             downloadUrl: downloadUrl,
             releaseNotes: releaseNotes,
             isMandatory: isMandatory,
+            expectedSize: expectedSize,
           ),
         );
       }
     } catch (_) {
-      // Silent catch if offline or timeout, so it does not block app usage
+      // Silent catch if offline or timeout, so app startup is never blocked
+    } finally {
+      _isCheckingOrShowing = false;
     }
   }
 }
@@ -54,6 +137,7 @@ class _InAppUpdateDialog extends StatefulWidget {
   final String downloadUrl;
   final String releaseNotes;
   final bool isMandatory;
+  final int? expectedSize;
 
   const _InAppUpdateDialog({
     required this.latestVersion,
@@ -61,6 +145,7 @@ class _InAppUpdateDialog extends StatefulWidget {
     required this.downloadUrl,
     required this.releaseNotes,
     required this.isMandatory,
+    this.expectedSize,
   });
 
   @override
@@ -97,7 +182,13 @@ class _InAppUpdateDialogState extends State<_InAppUpdateDialog> {
 
     try {
       final tempDir = await getTemporaryDirectory();
-      final savePath = '${tempDir.path}/FinFamily_v${widget.latestVersion}.apk';
+      final updateDir = Directory('${tempDir.path}/apk_updates');
+      if (!await updateDir.exists()) {
+        await updateDir.create(recursive: true);
+      }
+
+      // Safe static filename inside isolated update directory to prevent path traversal
+      final savePath = '${updateDir.path}/FinFamily_Update.apk';
 
       // Delete old incomplete APK file if exists
       final existingFile = File(savePath);
@@ -142,12 +233,35 @@ class _InAppUpdateDialogState extends State<_InAppUpdateDialog> {
 
       if (!mounted) return;
 
+      // Verify downloaded APK integrity
+      final downloadedFile = File(savePath);
+      if (!await downloadedFile.exists()) {
+        throw Exception('تعذر حفظ ملف التحديث');
+      }
+
+      final bytes = await downloadedFile.readAsBytes();
+      if (bytes.length < 4 ||
+          bytes[0] != 0x50 ||
+          bytes[1] != 0x4B ||
+          bytes[2] != 0x03 ||
+          bytes[3] != 0x04) {
+        await downloadedFile.delete();
+        throw Exception('ملف التحديث غير صالح أو تالف (ZIP/APK magic header verification failed)');
+      }
+
+      if (widget.expectedSize != null && widget.expectedSize! > 0) {
+        if (bytes.length != widget.expectedSize) {
+          await downloadedFile.delete();
+          throw Exception('حجم الملف المحمل لا يتطابق مع الحجم المصرح به من الخادم');
+        }
+      }
+
       setState(() {
         _isDownloading = false;
         _isDownloaded = true;
         _progress = 1.0;
         _downloadedFilePath = savePath;
-        _statusMessage = 'تم اكتمال التحميل بنجاح! 📦 جاري فتح نافذة التثبيت...';
+        _statusMessage = 'تم اكتمال التحميل والتحقق من سلامة الملف بنجاح! 📦 جاري فتح نافذة التثبيت...';
       });
 
       // Automatically launch the APK installer
@@ -206,6 +320,12 @@ class _InAppUpdateDialogState extends State<_InAppUpdateDialog> {
   }
 
   Future<void> _openExternalBrowser() async {
+    if (!UpdateChecker.isAllowedDownloadUrl(widget.downloadUrl)) {
+      setState(() {
+        _errorMessage = 'رابط التنزيل غير مصرح به أمنياً';
+      });
+      return;
+    }
     final uri = Uri.parse(widget.downloadUrl);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -214,262 +334,268 @@ class _InAppUpdateDialogState extends State<_InAppUpdateDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: _isDownloaded
-                  ? AppTheme.emerald.withOpacity(0.15)
-                  : (_isDownloading
-                      ? AppTheme.coral.withOpacity(0.15)
-                      : AppTheme.emerald.withOpacity(0.15)),
-              shape: BoxShape.circle,
-            ),
-            child: Text(
-              _isDownloaded ? '✅' : (_isDownloading ? '📥' : '🚀'),
-              style: const TextStyle(fontSize: 22),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _isDownloaded
-                  ? 'التحديث جاهز للتثبيت!'
-                  : (_isDownloading
-                      ? 'جاري تنزيل التحديث...'
-                      : 'تحديث جديد متوفر!'),
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.navy,
-              ),
-            ),
-          ),
-        ],
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return PopScope(
+      canPop: !widget.isMandatory,
+      child: AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
           children: [
-            // Version badge
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppTheme.gold.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.gold),
+                color: _isDownloaded
+                    ? AppTheme.emerald.withOpacity(0.15)
+                    : (_isDownloading
+                        ? AppTheme.coral.withOpacity(0.15)
+                        : AppTheme.emerald.withOpacity(0.15)),
+                shape: BoxShape.circle,
               ),
               child: Text(
-                'إصدار جديد: v${widget.latestVersion} (الحالي: v${widget.currentVersion})',
+                _isDownloaded ? '✅' : (_isDownloading ? '📥' : '🚀'),
+                style: const TextStyle(fontSize: 22),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _isDownloaded
+                    ? 'التحديث جاهز للتثبيت!'
+                    : (_isDownloading
+                        ? 'جاري تنزيل التحديث...'
+                        : (widget.isMandatory ? 'تحديث إجباري مطلوب!' : 'تحديث جديد متوفر!')),
                 style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
                   color: AppTheme.navy,
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-
-            // Release notes (when not downloading)
-            if (!_isDownloading && !_isDownloaded) ...[
-              Text(
-                widget.releaseNotes,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: AppTheme.textSecondary,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 14),
-              const Text(
-                'سيتم تنزيل وتثبيت التحديث مباشرة في الخلفية دون الحاجة لفتح المتصفح.',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: AppTheme.textMuted,
-                ),
-              ),
-            ],
-
-            // Active downloading progress bar
-            if (_isDownloading) ...[
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: LinearProgressIndicator(
-                  value: _progress > 0 ? _progress : null,
-                  backgroundColor: Colors.grey.shade200,
-                  valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.emerald),
-                  minHeight: 12,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _progressText,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.navy,
-                    ),
-                  ),
-                  Text(
-                    '${(_progress * 100).toInt()}%',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.emerald,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _statusMessage,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AppTheme.textMuted,
-                ),
-              ),
-            ],
-
-            // Downloaded successfully
-            if (_isDownloaded) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.emerald.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.emerald.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.check_circle, color: AppTheme.emerald, size: 22),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _statusMessage.isNotEmpty
-                            ? _statusMessage
-                            : 'تم تنزيل التحديث بنجاح! اضغط أدناه للتثبيت.',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.emerald,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            // Error display
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppTheme.coral.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppTheme.coral.withOpacity(0.3)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.error_outline, color: AppTheme.coral, size: 18),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        _errorMessage!,
-                        style: const TextStyle(fontSize: 12, color: AppTheme.coral),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ],
         ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Version badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.gold.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.gold),
+                ),
+                child: Text(
+                  'إصدار جديد: v${widget.latestVersion} (الحالي: v${widget.currentVersion})',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.navy,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Release notes (when not downloading)
+              if (!_isDownloading && !_isDownloaded) ...[
+                Text(
+                  widget.releaseNotes,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.textSecondary,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  widget.isMandatory
+                      ? 'هذا التحديث إجباري للاستمرار في استخدام خدمات FinFamily بأمان.'
+                      : 'سيتم تنزيل وتثبيت التحديث مباشرة في الخلفية دون الحاجة لفتح المتصفح.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: widget.isMandatory ? AppTheme.coral : AppTheme.textMuted,
+                    fontWeight: widget.isMandatory ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ],
+
+              // Active downloading progress bar
+              if (_isDownloading) ...[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    value: _progress > 0 ? _progress : null,
+                    backgroundColor: Colors.grey.shade200,
+                    valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.emerald),
+                    minHeight: 12,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _progressText,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.navy,
+                      ),
+                    ),
+                    Text(
+                      '${(_progress * 100).toInt()}%',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.emerald,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _statusMessage,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.textMuted,
+                  ),
+                ),
+              ],
+
+              // Downloaded successfully
+              if (_isDownloaded) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.emerald.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.emerald.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: AppTheme.emerald, size: 22),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _statusMessage.isNotEmpty
+                              ? _statusMessage
+                              : 'تم تنزيل التحديث بنجاح! اضغط أدناه للتثبيت.',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.emerald,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // Error display
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.coral.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.coral.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.error_outline, color: AppTheme.coral, size: 18),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(fontSize: 12, color: AppTheme.coral),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          // Cancel / Dismiss button (only for optional updates when not downloading)
+          if (!widget.isMandatory && !_isDownloading)
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'لاحقاً',
+                style: TextStyle(color: AppTheme.textMuted),
+              ),
+            ),
+
+          // Cancel during download
+          if (_isDownloading)
+            TextButton(
+              onPressed: () {
+                _cancelToken?.cancel();
+              },
+              child: const Text(
+                'إلغاء التحميل',
+                style: TextStyle(color: AppTheme.coral),
+              ),
+            ),
+
+          // Retry via browser if error (and URL allowed)
+          if (_errorMessage != null && !_isDownloading)
+            TextButton.icon(
+              onPressed: _openExternalBrowser,
+              icon: const Icon(Icons.open_in_browser, size: 16),
+              label: const Text(
+                'فتح في المتصفح',
+                style: TextStyle(color: AppTheme.navy, fontSize: 12),
+              ),
+            ),
+
+          // Main action button
+          if (!_isDownloading && !_isDownloaded)
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.emerald,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              onPressed: _startInAppDownload,
+              icon: const Icon(Icons.download, size: 18),
+              label: const Text(
+                'تحديث وتثبيت الآن ⬇️',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+
+          // Install button if already downloaded
+          if (_isDownloaded && _downloadedFilePath != null)
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.emerald,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              onPressed: () => _installApk(_downloadedFilePath!),
+              icon: const Icon(Icons.install_mobile, size: 18),
+              label: const Text(
+                'تثبيت التحديث الآن 🚀',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+        ],
       ),
-      actions: [
-        // Cancel / Dismiss button
-        if (!widget.isMandatory && !_isDownloading)
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'لاحقاً',
-              style: TextStyle(color: AppTheme.textMuted),
-            ),
-          ),
-
-        // Cancel during download
-        if (_isDownloading)
-          TextButton(
-            onPressed: () {
-              _cancelToken?.cancel();
-            },
-            child: const Text(
-              'إلغاء التحميل',
-              style: TextStyle(color: AppTheme.coral),
-            ),
-          ),
-
-        // Retry if error
-        if (_errorMessage != null && !_isDownloading)
-          TextButton.icon(
-            onPressed: _openExternalBrowser,
-            icon: const Icon(Icons.open_in_browser, size: 16),
-            label: const Text(
-              'فتح في المتصفح',
-              style: TextStyle(color: AppTheme.navy, fontSize: 12),
-            ),
-          ),
-
-        // Main action button
-        if (!_isDownloading && !_isDownloaded)
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.emerald,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            ),
-            onPressed: _startInAppDownload,
-            icon: const Icon(Icons.download, size: 18),
-            label: const Text(
-              'تحديث وتثبيت الآن ⬇️',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-
-        // Install button if already downloaded
-        if (_isDownloaded && _downloadedFilePath != null)
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.emerald,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            ),
-            onPressed: () => _installApk(_downloadedFilePath!),
-            icon: const Icon(Icons.install_mobile, size: 18),
-            label: const Text(
-              'تثبيت التحديث الآن 🚀',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-      ],
     );
   }
 }

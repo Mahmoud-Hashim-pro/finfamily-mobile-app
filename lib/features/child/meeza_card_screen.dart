@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../core/auth_state.dart';
 import '../../core/api_client.dart';
+import '../../core/error_handler.dart';
 import '../../models/card_model.dart';
 import '../../widgets/meeza_card_widget.dart';
 
@@ -15,18 +16,12 @@ class MeezaCardScreen extends StatefulWidget {
 
 class _MeezaCardScreenState extends State<MeezaCardScreen> {
   bool _isLoading = true;
+  String? _errorMessage;
   double? _dailyLimit;
   double _balance = 0.0;
   List<dynamic> _transactions = [];
 
-  CardModel _card = CardModel(
-    id: '',
-    userId: '',
-    cardNumber: '5061 •••• •••• 1234',
-    cardholderName: 'FinFamily Hero',
-    status: 'active',
-    expiryDate: '12/28',
-  );
+  CardModel? _card;
 
   @override
   void initState() {
@@ -35,6 +30,12 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
   }
 
   Future<void> _loadCardData() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final auth = Provider.of<AuthState>(context, listen: false);
       final walletRes = await ApiClient().get('/wallet/me');
@@ -52,19 +53,67 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
         _balance = (data['balance'] as num?)?.toDouble() ?? 0.0;
         _dailyLimit = (data['daily_limit'] as num?)?.toDouble();
         _card = CardModel(
-          id: data['id'] ?? '',
-          userId: data['owner_id'] ?? auth.user?['id'] ?? '',
-          cardNumber: data['card_number'] ?? '5061 •••• •••• 1234',
-          cardholderName: auth.user?['full_name'] ?? 'FinFamily Hero',
-          status: data['card_status'] ?? 'active',
-          expiryDate: '12/28',
+          id: data['id']?.toString() ?? '',
+          userId: data['owner_id']?.toString() ?? auth.user?['id']?.toString() ?? '',
+          cardNumber: data['card_number']?.toString() ?? '',
+          cardholderName: auth.user?['full_name']?.toString() ?? auth.user?['username']?.toString() ?? 'بطل مالي',
+          status: data['card_status']?.toString() ?? 'active',
+          expiryDate: data['card_expiry']?.toString() ?? data['expiry_date']?.toString(),
         );
         _transactions = txList;
         _isLoading = false;
+        _errorMessage = null;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _errorMessage = ApiErrorHandler.getErrorMessage(e);
+      });
+    }
+  }
+
+  String _getTransactionTypeLabel(Map<String, dynamic> t, bool isCredit) {
+    final type = (t['type'] ?? '').toString();
+    switch (type) {
+      case 'card_purchase':
+        return 'مشتريات كارت ميزة 💳';
+      case 'savings_transfer':
+        return 'تحويل لحصالة الأهداف 🎯';
+      case 'allowance':
+        return 'مصروف من ولي الأمر 🎁';
+      case 'game_reward':
+        return 'مكافأة ألعاب مالية 🎮';
+      case 'mission_reward':
+        return 'مكافأة مهمة منزلية 🧹';
+      case 'redemption':
+        return 'استبدال مكافأة 🏆';
+      case 'adjustment':
+        return 'تسوية رصيد ⚖️';
+      default:
+        return isCredit ? 'إيداع في المحفظة 📥' : 'خصم من المحفظة 📤';
+    }
+  }
+
+  String _getTransactionIcon(Map<String, dynamic> t, bool isCredit) {
+    final type = (t['type'] ?? '').toString();
+    switch (type) {
+      case 'card_purchase':
+        return '🛒';
+      case 'savings_transfer':
+        return '🎯';
+      case 'allowance':
+        return '🎁';
+      case 'game_reward':
+        return '🎮';
+      case 'mission_reward':
+        return '🧹';
+      case 'redemption':
+        return '🏆';
+      case 'adjustment':
+        return '⚖️';
+      default:
+        return isCredit ? '📥' : '📤';
     }
   }
 
@@ -85,11 +134,56 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 3D Flip Card
-                MeezaCardWidget(
-                  card: _card,
-                  showControls: false,
-                ),
+                if (_errorMessage != null)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.bottom(20),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.red.shade100),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.error_outline, size: 40, color: Colors.redAccent),
+                        const SizedBox(height: 10),
+                        Text(
+                          _errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: AppTheme.navy, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        const SizedBox(height: 14),
+                        ElevatedButton.icon(
+                          onPressed: _loadCardData,
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('إعادة المحاولة'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.emerald,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_card != null)
+                  // 3D Flip Card
+                  MeezaCardWidget(
+                    card: _card!,
+                    showControls: false,
+                  )
+                else if (_isLoading)
+                  Container(
+                    height: 200,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.cardBorder),
+                    ),
+                    child: const Center(child: CircularProgressIndicator(color: AppTheme.emerald)),
+                  ),
+
                 const SizedBox(height: 24),
 
                 // Spending Limit Indicator (if set by parent)
@@ -157,7 +251,7 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                if (_isLoading)
+                if (_isLoading && _transactions.isEmpty)
                   const Center(
                     child: Padding(
                       padding: EdgeInsets.all(32),
@@ -200,10 +294,12 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                     itemCount: _transactions.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
-                      final t = _transactions[index];
+                      final t = _transactions[index] as Map<String, dynamic>;
                       final isCredit = t['direction'] == 'credit';
                       final amount = (t['amount'] as num?)?.toDouble() ?? 0.0;
                       final desc = t['description'] ?? 'عملية كارت';
+                      final typeLabel = _getTransactionTypeLabel(t, isCredit);
+                      final iconStr = _getTransactionIcon(t, isCredit);
 
                       return Container(
                         padding: const EdgeInsets.all(14),
@@ -226,7 +322,7 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                                     shape: BoxShape.circle,
                                   ),
                                   child: Text(
-                                    isCredit ? '📥' : '🛒',
+                                    iconStr,
                                     style: const TextStyle(fontSize: 18),
                                   ),
                                 ),
@@ -242,7 +338,7 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                                       ),
                                     ),
                                     Text(
-                                      isCredit ? 'إيداع في المحفظة' : 'مشتريات كارت ميزة',
+                                      typeLabel,
                                       style: const TextStyle(
                                         fontSize: 11,
                                         color: AppTheme.textMuted,
