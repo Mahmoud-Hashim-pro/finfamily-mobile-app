@@ -4,12 +4,6 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
-def keystoreProperties = new Properties()
-def keystorePropertiesFile = rootProject.file('key.properties')
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-}
-
 android {
     namespace "com.finfamily.app"
     compileSdk flutter.compileSdkVersion
@@ -45,22 +39,9 @@ android {
         }
     }
 
-    signingConfigs {
-        release {
-            if (keystorePropertiesFile.exists() && keystoreProperties['keyAlias'] != null) {
-                keyAlias keystoreProperties['keyAlias']
-                keyPassword keystoreProperties['keyPassword']
-                storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
-                storePassword keystoreProperties['storePassword']
-            } else {
-                signingConfig signingConfigs.debug
-            }
-        }
-    }
-
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            signingConfig = signingConfigs.debug
             minifyEnabled false
             shrinkResources false
         }
