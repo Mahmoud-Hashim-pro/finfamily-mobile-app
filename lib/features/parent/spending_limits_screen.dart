@@ -45,6 +45,7 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
   };
 
   Set<String> _otherBlockedCategories = {};
+  bool _walletLoaded = false;
 
   @override
   void initState() {
@@ -81,6 +82,12 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
   }
 
   Future<void> _loadChildWallet(String childId) async {
+    setState(() {
+      _walletLoaded = false;
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final res = await ApiClient().get('/wallet/child/$childId');
       final data = res.data;
@@ -107,12 +114,14 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
             _otherBlockedCategories.add(cat);
           }
         }
+        _walletLoaded = true;
         _isLoading = false;
         _errorMessage = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
+        _walletLoaded = false;
         _isLoading = false;
         _errorMessage = ApiErrorHandler.getErrorMessage(e);
       });
@@ -120,7 +129,15 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
   }
 
   Future<void> _saveLimits() async {
-    if (_selectedChildId == null) return;
+    if (_selectedChildId == null || !_walletLoaded) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('يرجى انتظار تحميل بيانات حدود الصرف الخاصة بالطفل أولاً.'),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
+      return;
+    }
 
     if (!mounted) return;
     setState(() => _isSaving = true);
@@ -535,9 +552,9 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
 
                             CustomButton(
                               text: 'حفظ الحدود والإعدادات',
-                              backgroundColor: AppTheme.navy,
+                              backgroundColor: (_walletLoaded && !_isLoading) ? AppTheme.navy : Colors.grey.shade400,
                               isLoading: _isSaving,
-                              onPressed: _saveLimits,
+                              onPressed: (_walletLoaded && !_isLoading) ? _saveLimits : null,
                             ),
                           ],
                         ),

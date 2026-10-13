@@ -73,6 +73,24 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
     }
   }
 
+  double _getTodaySpent() {
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    double total = 0.0;
+    for (var t in _transactions) {
+      if (t['direction'] == 'debit' && (t['type'] == 'card_purchase' || t['type'] == 'debit')) {
+        DateTime? dt;
+        if (t['created_date'] != null) {
+          dt = DateTime.tryParse(t['created_date'].toString());
+        }
+        if (dt != null && dt.isAfter(todayStart)) {
+          total += ((t['amount'] as num?)?.toDouble() ?? 0.0);
+        }
+      }
+    }
+    return total;
+  }
+
   String _getTransactionTypeLabel(Map<String, dynamic> t, bool isCredit) {
     final type = (t['type'] ?? '').toString();
     switch (type) {
@@ -167,10 +185,33 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                     ),
                   )
                 else if (_card != null)
-                  // 3D Flip Card
-                  MeezaCardWidget(
-                    card: _card!,
-                    showControls: false,
+                  Column(
+                    children: [
+                      MeezaCardWidget(
+                        card: _card!,
+                        showControls: false,
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.navy.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppTheme.navy.withOpacity(0.12)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.school, size: 15, color: AppTheme.navy),
+                            SizedBox(width: 6),
+                            Text(
+                              'بطاقة ميزة تعليمية آمنة (محاكاة مالية تفاعلية)',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.navy),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   )
                 else if (_isLoading)
                   Container(
@@ -188,54 +229,68 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
 
                 // Spending Limit Indicator (if set by parent)
                 if (_dailyLimit != null && _dailyLimit! > 0)
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppTheme.cardBorder),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Builder(
+                    builder: (context) {
+                      final todaySpent = _getTodaySpent();
+                      final double ratio = (todaySpent / _dailyLimit!).clamp(0.0, 1.0);
+                      return Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppTheme.cardBorder),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'حد الصرف اليومي المحدد',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.navy,
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'استهلاك حد الصرف اليومي',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.navy,
+                                  ),
+                                ),
+                                Text(
+                                  '${todaySpent.toStringAsFixed(1)} / ${_dailyLimit!.toStringAsFixed(0)} ج.م',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: ratio > 0.85 ? AppTheme.coral : AppTheme.emeraldDark,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: LinearProgressIndicator(
+                                value: ratio,
+                                minHeight: 8,
+                                backgroundColor: const Color(0xFFE2E8F0),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  ratio > 0.85 ? AppTheme.coral : AppTheme.emerald,
+                                ),
                               ),
                             ),
+                            const SizedBox(height: 8),
                             Text(
-                              '${_dailyLimit!.toStringAsFixed(0)} ج.م',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.emeraldDark,
+                              ratio >= 1.0
+                                  ? 'وصلت للحد الأقصى المسموح به لليوم! 🛑'
+                                  : 'متبقي لك اليوم: ${(_dailyLimit! - todaySpent).clamp(0.0, _dailyLimit!).toStringAsFixed(1)} ج.م 👍',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: ratio >= 1.0 ? AppTheme.coral : AppTheme.textMuted,
+                                fontWeight: ratio >= 1.0 ? FontWeight.bold : FontWeight.normal,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: const LinearProgressIndicator(
-                            value: 0.35,
-                            minHeight: 8,
-                            backgroundColor: Color(0xFFE2E8F0),
-                            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.emerald),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'مضبوط بمعرفة ولي الأمر لحمايتك وتنظيم مشترياتك 👍',
-                          style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
 
                 const SizedBox(height: 24),

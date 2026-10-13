@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:crypto/crypto.dart';
 import '../config/api_config.dart';
 import '../config/theme.dart';
 import 'api_client.dart';
@@ -102,6 +103,7 @@ class UpdateChecker {
           'يتضمن هذا التحديث تحسينات أمنية وإصلاحات وتحديثات جديدة.').toString();
       final isMandatory = (data['is_mandatory'] as bool?) ?? false;
       final expectedSize = (data['file_size'] as num?)?.toInt();
+      final expectedSha256 = (data['sha256'] ?? data['file_hash'])?.toString().trim();
 
       if (!isAllowedDownloadUrl(downloadUrl)) {
         return;
@@ -120,6 +122,7 @@ class UpdateChecker {
             releaseNotes: releaseNotes,
             isMandatory: isMandatory,
             expectedSize: expectedSize,
+            expectedSha256: (expectedSha256 != null && expectedSha256.isNotEmpty) ? expectedSha256 : null,
           ),
         );
       }
@@ -138,6 +141,7 @@ class _InAppUpdateDialog extends StatefulWidget {
   final String releaseNotes;
   final bool isMandatory;
   final int? expectedSize;
+  final String? expectedSha256;
 
   const _InAppUpdateDialog({
     required this.latestVersion,
@@ -146,6 +150,7 @@ class _InAppUpdateDialog extends StatefulWidget {
     required this.releaseNotes,
     required this.isMandatory,
     this.expectedSize,
+    this.expectedSha256,
   });
 
   @override
@@ -253,6 +258,14 @@ class _InAppUpdateDialogState extends State<_InAppUpdateDialog> {
         if (bytes.length != widget.expectedSize) {
           await downloadedFile.delete();
           throw Exception('حجم الملف المحمل لا يتطابق مع الحجم المصرح به من الخادم');
+        }
+      }
+
+      if (widget.expectedSha256 != null && widget.expectedSha256!.isNotEmpty) {
+        final digest = sha256.convert(bytes);
+        if (digest.toString().toLowerCase() != widget.expectedSha256!.toLowerCase().trim()) {
+          await downloadedFile.delete();
+          throw Exception('فشل التحقق من التوقيع الرقمي للملف (SHA-256 hash mismatch)');
         }
       }
 

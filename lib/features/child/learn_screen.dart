@@ -237,7 +237,21 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       final auth = Provider.of<AuthState>(context, listen: false);
       final childId = auth.user?['id']?.toString() ?? 'default';
       final prefs = await SharedPreferences.getInstance();
-      final completed = prefs.getStringList('completed_lessons_$childId') ?? ['les_1'];
+      List<String> completed = prefs.getStringList('completed_lessons_$childId') ?? ['les_1'];
+
+      // Sync authoritative completed lessons from backend
+      try {
+        final res = await ApiClient().get('/lessons/completed');
+        if (res.data is List) {
+          final serverList = (res.data as List).map((e) => e.toString()).toList();
+          for (var s in serverList) {
+            if (!completed.contains(s)) completed.add(s);
+          }
+          await prefs.setStringList('completed_lessons_$childId', completed);
+        }
+      } catch (_) {
+        // Fallback to local storage if offline
+      }
 
       if (!mounted) return;
       setState(() {
@@ -261,6 +275,25 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
     final completed = prefs.getStringList('completed_lessons_$childId') ?? ['les_1'];
 
     final id = lesson['id'] as String;
+    final int xp = (lesson['xp'] as num?)?.toInt() ?? 20;
+
+    // Send authoritative lesson completion to backend
+    try {
+      final res = await ApiClient().post(
+        '/lessons/complete',
+        data: {'lesson_id': id, 'xp': xp},
+      );
+      if (res.data != null && res.data is Map) {
+        final int? newXp = (res.data['current_xp'] as num?)?.toInt();
+        final int? newLevel = (res.data['current_level'] as num?)?.toInt();
+        if (newXp != null) {
+          auth.updateChildStats(xp: newXp, level: newLevel);
+        }
+      }
+    } catch (_) {
+      // Local fallback on transient error
+    }
+
     if (!completed.contains(id)) {
       completed.add(id);
       await prefs.setStringList('completed_lessons_$childId', completed);
@@ -271,7 +304,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('مبروك! أتممت درس "${lesson['title']}" وحصلت على +${lesson['xp']} XP! 🎓'),
+        content: Text('مبروك! أتممت درس "${lesson['title']}" وحصلت على +$xp XP! 🎓'),
         backgroundColor: AppTheme.emerald,
       ),
     );
@@ -419,7 +452,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
                       child: ElevatedButton(
                         onPressed: () async {
                           setSheetState(() => isSubmitting = true);
-                          await _submitGameCompletion(ctx, game, isCorrect: true);
+                          await _submitGameCompletion(ctx, game, isCorrect: true, selectedOption: 'optA');
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.emerald,
@@ -466,7 +499,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
     );
   }
 
-  Future<void> _submitGameCompletion(BuildContext sheetContext, Map<String, dynamic> game, {required bool isCorrect}) async {
+  Future<void> _submitGameCompletion(BuildContext sheetContext, Map<String, dynamic> game, {required bool isCorrect, required String selectedOption}) async {
     try {
       final res = await ApiClient().post(
         '/games/complete',
@@ -474,6 +507,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
           'game_id': game['id'],
           'score': isCorrect ? 1.0 : 0.0,
           'total': 1.0,
+          'selected_option': selectedOption,
         },
       );
 
