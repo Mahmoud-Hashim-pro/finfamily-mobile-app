@@ -27,6 +27,10 @@ class SecureStorageService {
     if (familyId != null) await _storage.write(key: _keyFamilyId, value: familyId);
   }
 
+  Future<void> saveRole(String role) async {
+    await _storage.write(key: _keyRole, value: role);
+  }
+
   Future<String?> getToken() async => await _storage.read(key: _keyToken);
   Future<String?> getRole() async => await _storage.read(key: _keyRole);
   Future<String?> getUserId() async => await _storage.read(key: _keyUserId);

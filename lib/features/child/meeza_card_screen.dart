@@ -137,7 +137,7 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                 if (_errorMessage != null)
                   Container(
                     width: double.infinity,
-                    margin: const EdgeInsets.bottom(20),
+                    margin: const EdgeInsets.only(bottom: 20),
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: Colors.white,
