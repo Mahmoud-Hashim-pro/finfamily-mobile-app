@@ -248,7 +248,10 @@ class AuthState extends ChangeNotifier {
         }
       }
 
-      await _storage.saveSession(token: token, role: _role ?? 'parent');
+      final saved = await _storage.saveSession(token: token, role: _role ?? 'parent');
+      if (!saved) {
+        throw Exception('تعذر حفظ بيانات الجلسة بشكل آمن على هذا الجهاز');
+      }
       _status = AuthStatus.authenticated;
       _isServerVerified = true;
       notifyListeners();
@@ -289,7 +292,10 @@ class AuthState extends ChangeNotifier {
       _pendingParentEmail = null;
       _pendingParentPassword = null;
 
-      await _storage.saveSession(token: token, role: 'parent');
+      final saved = await _storage.saveSession(token: token, role: 'parent');
+      if (!saved) {
+        throw Exception('تعذر حفظ بيانات الجلسة بشكل آمن على هذا الجهاز');
+      }
       await checkAuth();
       return true;
     } catch (e) {
@@ -331,7 +337,10 @@ class AuthState extends ChangeNotifier {
       _pendingParentEmail = null;
       _pendingParentPassword = null;
 
-      await _storage.saveSession(token: token, role: 'parent');
+      final saved = await _storage.saveSession(token: token, role: 'parent');
+      if (!saved) {
+        throw Exception('تعذر حفظ بيانات الجلسة بشكل آمن على هذا الجهاز');
+      }
       await checkAuth();
       return true;
     } catch (e) {
@@ -362,7 +371,10 @@ class AuthState extends ChangeNotifier {
       _pendingParentEmail = null;
       _pendingParentPassword = null;
 
-      await _storage.saveSession(token: token, role: 'parent');
+      final saved = await _storage.saveSession(token: token, role: 'parent');
+      if (!saved) {
+        throw Exception('تعذر حفظ بيانات الجلسة بشكل آمن على هذا الجهاز');
+      }
       await checkAuth();
       return true;
     } catch (e) {
@@ -394,7 +406,10 @@ class AuthState extends ChangeNotifier {
       _pendingParentEmail = null;
       _pendingParentPassword = null;
 
-      await _storage.saveSession(token: token, role: 'child');
+      final saved = await _storage.saveSession(token: token, role: 'child');
+      if (!saved) {
+        throw Exception('تعذر حفظ بيانات الجلسة بشكل آمن على هذا الجهاز');
+      }
       await checkAuth();
       return true;
     } catch (e) {
@@ -423,7 +438,10 @@ class AuthState extends ChangeNotifier {
       _pendingParentPassword = null;
       _role = 'admin';
 
-      await _storage.saveSession(token: token, role: 'admin');
+      final saved = await _storage.saveSession(token: token, role: 'admin');
+      if (!saved) {
+        throw Exception('تعذر حفظ بيانات الجلسة بشكل آمن على هذا الجهاز');
+      }
       await checkAuth();
       return true;
     } catch (e) {
@@ -461,7 +479,10 @@ class AuthState extends ChangeNotifier {
       _pendingParentEmail = null;
       _pendingParentPassword = null;
 
-      await _storage.saveSession(token: token, role: 'parent');
+      final saved = await _storage.saveSession(token: token, role: 'parent');
+      if (!saved) {
+        throw Exception('تعذر حفظ بيانات الجلسة بشكل آمن على هذا الجهاز');
+      }
       await checkAuth();
       return true;
     } catch (e) {

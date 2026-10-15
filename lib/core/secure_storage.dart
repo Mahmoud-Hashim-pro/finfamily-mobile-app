@@ -20,7 +20,7 @@ class SecureStorageService {
   static const String _keyFamilyId = 'finfamily_family_id';
   static const String _keyHasSession = 'finfamily_has_session';
 
-  Future<void> saveSession({
+  Future<bool> saveSession({
     required String token,
     required String role,
     String? userId,
@@ -41,7 +41,9 @@ class SecureStorageService {
         await _storage.delete(key: _keyFamilyId);
       }
     } catch (_) {
-      // In case FlutterSecureStorage throws on initial write
+      // In case FlutterSecureStorage throws (e.g. Android Keystore corruption or security lock),
+      // DO NOT report success or leave app in a false authenticated state!
+      return false;
     }
 
     // 2. SharedPreferences ONLY stores non-sensitive UI display metadata (NEVER the bearer token)
@@ -61,6 +63,8 @@ class SecureStorageService {
       }
       await prefs.setBool(_keyHasSession, true);
     } catch (_) {}
+
+    return true;
   }
 
   Future<void> saveRole(String role) async {
