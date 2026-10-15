@@ -29,7 +29,6 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _loadWallet() async {
     if (!mounted) return;
     setState(() {
-      _isLoading = true;
       _errorMessage = null;
     });
 
