@@ -35,18 +35,20 @@ class AuthState extends ChangeNotifier {
   bool get isParent => _role == 'parent';
   bool get isChild => _role == 'child';
   bool get isServerVerified => _isServerVerified;
+  /// Distinguishes an offline or unverified restored session from a server-confirmed active session.
+  bool get isRestoredOfflineSession => _status == AuthStatus.authenticated && !_isServerVerified;
 
   // Synchronization helpers
   Future<void> get authInitialized => _authInitCompleter.future;
   bool get isInitialized => _isInitialized;
 
-  /// Super-admin capability is derived strictly from server-authenticated role/claims.
-  /// Hardcoded email allowlists are eliminated to prevent phishing/targeting and authorization bypass.
+  /// Super-admin capability is derived strictly from server-authenticated role/claims AND verified with backend.
+  /// Locally cached or unverified offline roles NEVER grant super-admin access or local admin UI.
   bool get isSuperAdmin {
-    if (_user == null && _role == null) return false;
+    if (!_isServerVerified || _user == null) return false;
     return _user?['is_admin'] == true ||
-        _role == 'admin' ||
-        _user?['role'] == 'admin';
+        _user?['role'] == 'admin' ||
+        _role == 'admin';
   }
 
   AuthState() {
@@ -175,11 +177,21 @@ class AuthState extends ChangeNotifier {
           _role = serverRole;
           await _storage.saveRole(serverRole);
         }
+        _isServerVerified = true;
         notifyListeners();
       }
     } catch (_) {
       // Keep existing state on transient refresh failure
     }
+  }
+
+  /// Requires fresh server verification for sensitive actions.
+  /// If the session is already server-verified, returns true immediately.
+  /// Otherwise attempts to verify with the backend.
+  Future<bool> requireServerVerification() async {
+    if (_isServerVerified && _user != null) return true;
+    await refreshCurrentUser();
+    return _isServerVerified;
   }
 
   /// Dynamically updates child gamification and wallet stats in memory and notifies listeners.

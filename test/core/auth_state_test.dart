@@ -10,11 +10,17 @@ void main() {
       expect(auth.isSuperAdmin, isFalse);
     });
 
-    test('isSuperAdmin is false when unauthenticated', () {
+    test('isSuperAdmin is false when unauthenticated or unverified', () {
       final auth = AuthState();
       expect(auth.isSuperAdmin, isFalse);
       expect(auth.isParent, isFalse);
       expect(auth.isChild, isFalse);
+      expect(auth.isServerVerified, isFalse);
+    });
+
+    test('isRestoredOfflineSession is false initially when unauthenticated', () {
+      final auth = AuthState();
+      expect(auth.isRestoredOfflineSession, isFalse);
     });
   });
 
