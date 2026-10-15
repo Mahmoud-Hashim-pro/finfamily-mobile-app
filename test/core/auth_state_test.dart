@@ -29,6 +29,7 @@ void main() {
       // Initially user is null, updateChildStats safely does nothing
       auth.updateChildStats(xp: 150, level: 3, streak: 5, balance: 250.0);
       expect(auth.user, isNull);
+      expect(notificationCount, 0);
     });
   });
 }

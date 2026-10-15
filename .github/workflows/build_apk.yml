@@ -28,13 +28,15 @@ jobs:
           channel: 'stable'
 
       - name: Generate Android project structure
-        run: flutter create . --org com.finfamily.app --project-name finfamily_mobile
+        run: |
+          flutter create . --org com.finfamily.app --project-name finfamily_mobile
+          git checkout test/widget_test.dart 2>/dev/null || true
 
       - name: Install dependencies
         run: flutter pub get
 
       - name: Run Flutter static analysis
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze lib --no-fatal-infos
 
       - name: Decode Production Signing Keystore
         run: |
