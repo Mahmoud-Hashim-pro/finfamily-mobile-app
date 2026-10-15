@@ -35,6 +35,8 @@ class AuthState extends ChangeNotifier {
   bool get isParent => _role == 'parent';
   bool get isChild => _role == 'child';
   bool get isServerVerified => _isServerVerified;
+  bool get isVerifiedParent => _isServerVerified && _role == 'parent';
+  bool get isVerifiedChild => _isServerVerified && _role == 'child';
   /// Distinguishes an offline or unverified restored session from a server-confirmed active session.
   bool get isRestoredOfflineSession => _status == AuthStatus.authenticated && !_isServerVerified;
 
@@ -70,6 +72,7 @@ class AuthState extends ChangeNotifier {
   /// Transient network errors do NOT clear the session.
   Future<void> checkAuth() async {
     _status = AuthStatus.loading;
+    _isServerVerified = false;
     notifyListeners();
 
     try {
@@ -511,6 +514,7 @@ class AuthState extends ChangeNotifier {
     } catch (_) {}
     _user = null;
     _role = null;
+    _isServerVerified = false;
     _tempLoginToken = null;
     _pendingParentEmail = null;
     _pendingParentPassword = null;

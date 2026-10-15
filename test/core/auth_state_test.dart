@@ -16,11 +16,33 @@ void main() {
       expect(auth.isParent, isFalse);
       expect(auth.isChild, isFalse);
       expect(auth.isServerVerified, isFalse);
+      expect(auth.isVerifiedParent, isFalse);
+      expect(auth.isVerifiedChild, isFalse);
     });
 
     test('isRestoredOfflineSession is false initially when unauthenticated', () {
       final auth = AuthState();
       expect(auth.isRestoredOfflineSession, isFalse);
+    });
+  });
+
+  group('AuthState - Session Verification and Verified Role Isolation', () {
+    test('isVerifiedParent and isVerifiedChild fail closed when unverified', () {
+      final auth = AuthState();
+      expect(auth.isServerVerified, isFalse);
+      expect(auth.isVerifiedParent, isFalse);
+      expect(auth.isVerifiedChild, isFalse);
+    });
+
+    test('logout clears user, role, and resets server verified flag to false', () async {
+      final auth = AuthState();
+      await auth.logout();
+      expect(auth.status, equals(AuthStatus.unauthenticated));
+      expect(auth.user, isNull);
+      expect(auth.role, isNull);
+      expect(auth.isServerVerified, isFalse);
+      expect(auth.isVerifiedParent, isFalse);
+      expect(auth.isVerifiedChild, isFalse);
     });
   });
 
