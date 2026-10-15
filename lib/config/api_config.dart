@@ -12,6 +12,7 @@ class ApiConfig {
   // Auth endpoints
   static const String parentRegister = '/auth/register';
   static const String parentLogin = '/auth/login';
+  static const String googleLogin = '/auth/google';
   static const String childLogin = '/auth/child/login';
   static const String childLookup = '/auth/child/lookup';
   static const String currentUser = '/auth/me';

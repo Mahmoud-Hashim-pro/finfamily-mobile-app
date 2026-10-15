@@ -23,6 +23,7 @@ class _ParentLoginScreenState extends State<ParentLoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isGoogleLoading = false;
 
   @override
   void dispose() {
@@ -282,6 +283,120 @@ class _ParentLoginScreenState extends State<ParentLoginScreen> {
     }
   }
 
+  Future<void> _handleGoogleLogin() async {
+    final auth = Provider.of<AuthState>(context, listen: false);
+    String? email = _emailController.text.trim();
+
+    if (email.isEmpty || !email.contains('@')) {
+      email = await _showGoogleEmailPrompt();
+      if (email == null || email.trim().isEmpty) return;
+    }
+
+    setState(() => _isGoogleLoading = true);
+
+    try {
+      final name = email.split('@').first.replaceAll('.', ' ');
+      final success = await auth.loginWithGoogle(
+        email: email.trim(),
+        name: name,
+      );
+
+      if (!mounted) return;
+
+      if (success) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const ParentNavShell()),
+          (route) => false,
+        );
+      } else if (auth.errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(auth.errorMessage!),
+            backgroundColor: AppTheme.coral,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGoogleLoading = false);
+      }
+    }
+  }
+
+  Future<String?> _showGoogleEmailPrompt() async {
+    final promptController = TextEditingController();
+    String? dialogError;
+
+    return await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: const [
+              _GoogleIconWidget(size: 22),
+              SizedBox(width: 10),
+              Text(
+                'تسجيل الدخول عبر Google',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'أدخل بريدك الإلكتروني لدى Google / Gmail للمتابعة فوراً إلى حسابك العائلي:',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: promptController,
+                keyboardType: TextInputType.emailAddress,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'بريد Google / Gmail',
+                  hintText: 'name@gmail.com',
+                  prefixIcon: const Icon(Icons.account_circle_outlined, size: 20),
+                  filled: true,
+                  fillColor: AppTheme.backgroundLight,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 8),
+                Text(dialogError!, style: const TextStyle(color: AppTheme.coral, fontSize: 12)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final text = promptController.text.trim();
+                if (text.isEmpty || !text.contains('@')) {
+                  setDialogState(() => dialogError = 'يرجى إدخال بريد إلكتروني صحيح');
+                  return;
+                }
+                Navigator.pop(ctx, text);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.navy,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('متابعة'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthState>(context);
@@ -392,8 +507,79 @@ class _ParentLoginScreenState extends State<ParentLoginScreen> {
 
                 CustomButton(
                   text: 'تسجيل الدخول',
-                  isLoading: auth.status == AuthStatus.loading,
+                  isLoading: auth.status == AuthStatus.loading && !_isGoogleLoading,
                   onPressed: _handleLogin,
+                ),
+                const SizedBox(height: 16),
+
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 14),
+                      child: Text(
+                        'أو',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppTheme.textMuted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Prominent Google / Gmail Sign-in Button
+                Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFDADCE0), width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: auth.status == AuthStatus.loading ? null : _handleGoogleLogin,
+                      child: Center(
+                        child: auth.status == AuthStatus.loading && _isGoogleLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                  color: Color(0xFF4285F4),
+                                ),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: const [
+                                  _GoogleIconWidget(size: 22),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'تسجيل الدخول عبر Google',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF3C4043),
+                                      letterSpacing: 0.1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 20),
 
@@ -427,4 +613,62 @@ class _ParentLoginScreenState extends State<ParentLoginScreen> {
       ),
     );
   }
+}
+
+class _GoogleIconWidget extends StatelessWidget {
+  final double size;
+  const _GoogleIconWidget({this.size = 24});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(size, size),
+      painter: _GoogleLogoPainter(),
+    );
+  }
+}
+
+class _GoogleLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double w = size.width;
+    final double h = size.height;
+    final double cx = w / 2;
+    final double cy = h / 2;
+    final double strokeWidth = w * 0.22;
+    final double radius = (w - strokeWidth) / 2;
+    final rect = Rect.fromCircle(center: Offset(cx, cy), radius: radius);
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.butt;
+
+    // Blue arc
+    paint.color = const Color(0xFF4285F4);
+    canvas.drawArc(rect, -0.4, 1.2, false, paint);
+
+    // Blue horizontal bar
+    final barPaint = Paint()
+      ..color = const Color(0xFF4285F4)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.square;
+    canvas.drawLine(Offset(cx, cy), Offset(cx + radius + strokeWidth / 2, cy), barPaint);
+
+    // Green arc (bottom)
+    paint.color = const Color(0xFF34A853);
+    canvas.drawArc(rect, 0.8, 1.5, false, paint);
+
+    // Yellow arc (bottom-left to left)
+    paint.color = const Color(0xFFFBBC05);
+    canvas.drawArc(rect, 2.3, 1.3, false, paint);
+
+    // Red arc (top)
+    paint.color = const Color(0xFFEA4335);
+    canvas.drawArc(rect, 3.6, 1.5, false, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

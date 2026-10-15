@@ -70,7 +70,7 @@ class AuthState extends ChangeNotifier {
       String? token;
       String? savedRole;
 
-      // Safely access secure storage; handle Android Keystore decryption failures gracefully
+      // Safely access secure storage with SharedPreferences dual fallback
       try {
         token = await _storage.getToken();
         savedRole = await _storage.getRole();
@@ -92,9 +92,16 @@ class AuthState extends ChangeNotifier {
         return;
       }
 
+      // Restore session immediately from saved token & role before/while verifying with backend
+      _status = AuthStatus.authenticated;
+      if (savedRole != null && savedRole.isNotEmpty) {
+        _role = savedRole;
+      }
+      notifyListeners();
+
       // Verify token with backend
       try {
-        final response = await _api.get(ApiConfig.currentUser);
+        final response = await _api.get(ApiConfig.currentUser).timeout(const Duration(seconds: 4));
         if (response.data != null && response.data is Map) {
           _user = Map<String, dynamic>.from(response.data);
 
@@ -109,7 +116,8 @@ class AuthState extends ChangeNotifier {
 
           _status = AuthStatus.authenticated;
         } else {
-          _status = AuthStatus.unauthenticated;
+          // If response format is unexpected, preserve active authenticated state
+          _status = AuthStatus.authenticated;
         }
       } on DioException catch (dioErr) {
         final statusCode = dioErr.response?.statusCode;
@@ -123,20 +131,16 @@ class AuthState extends ChangeNotifier {
           _status = AuthStatus.unauthenticated;
         } else {
           // Keep authenticated session on network failure, timeout, or server 5xx error
+          _status = AuthStatus.authenticated;
           if (savedRole != null && savedRole.isNotEmpty) {
             _role = savedRole;
-            _status = AuthStatus.authenticated;
-          } else {
-            _status = AuthStatus.authenticated;
           }
         }
       } catch (generalErr) {
-        // Non-auth exception: preserve session if token exists
+        // Timeout or non-auth exception: preserve session if token exists
+        _status = AuthStatus.authenticated;
         if (savedRole != null && savedRole.isNotEmpty) {
           _role = savedRole;
-          _status = AuthStatus.authenticated;
-        } else {
-          _status = AuthStatus.authenticated;
         }
       }
     } finally {
@@ -183,6 +187,53 @@ class AuthState extends ChangeNotifier {
       if (balance != null) updated['balance'] = balance;
       _user = updated;
       notifyListeners();
+    }
+  }
+
+  // Google / Gmail Sign-in
+  Future<bool> loginWithGoogle({String? idToken, String? email, String? name}) async {
+    _status = AuthStatus.loading;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final response = await _api.post(
+        ApiConfig.googleLogin,
+        data: {
+          if (idToken != null && idToken.isNotEmpty) 'id_token': idToken,
+          if (email != null && email.isNotEmpty) 'email': email.trim().toLowerCase(),
+          if (name != null && name.isNotEmpty) 'name': name.trim(),
+        },
+      );
+
+      final data = response.data;
+      final token = data['access_token'];
+      if (token == null || (token is String && token.isEmpty)) {
+        throw Exception('لم يتم استلام رمز الدخول من الخادم');
+      }
+
+      _tempLoginToken = null;
+      _pendingParentEmail = null;
+      _pendingParentPassword = null;
+      _role = 'parent';
+
+      if (data['user'] != null && data['user'] is Map) {
+        _user = Map<String, dynamic>.from(data['user']);
+        if (_user?['role'] != null) {
+          _role = _user!['role'] as String;
+        }
+      }
+
+      await _storage.saveSession(token: token, role: _role ?? 'parent');
+      _status = AuthStatus.authenticated;
+      notifyListeners();
+      await checkAuth();
+      return true;
+    } catch (e) {
+      _errorMessage = ApiErrorHandler.getErrorMessage(e);
+      _status = AuthStatus.unauthenticated;
+      notifyListeners();
+      return false;
     }
   }
 

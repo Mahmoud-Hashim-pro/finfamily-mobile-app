@@ -39,26 +39,27 @@ android {
         }
     }
 
+    def keystorePath = System.getenv("KEYSTORE_FILE") ?: System.getenv("KEYSTORE_PATH")
+    def hasReleaseKeystore = keystorePath != null && file(keystorePath).exists()
+
     signingConfigs {
         release {
-            def keystorePath = System.getenv("KEYSTORE_FILE") ?: System.getenv("KEYSTORE_PATH")
-            if (keystorePath && file(keystorePath).exists()) {
+            if (hasReleaseKeystore) {
                 storeFile file(keystorePath)
                 storePassword System.getenv("KEYSTORE_PASSWORD")
                 keyAlias System.getenv("KEY_ALIAS")
                 keyPassword System.getenv("KEY_PASSWORD")
-            } else {
-                storeFile signingConfigs.debug.storeFile
-                storePassword signingConfigs.debug.storePassword
-                keyAlias signingConfigs.debug.keyAlias
-                keyPassword signingConfigs.debug.keyPassword
             }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.release
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.release
+            } else {
+                signingConfig = signingConfigs.debug
+            }
             minifyEnabled false
             shrinkResources false
         }

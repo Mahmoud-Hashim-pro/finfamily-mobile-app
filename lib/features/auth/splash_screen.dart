@@ -76,9 +76,18 @@ class _SplashScreenState extends State<SplashScreen>
     // Show splash for 2.8 seconds so the user enjoys the official high-resolution branding
     await Future.delayed(const Duration(milliseconds: 2800));
     if (!mounted || _isNavigating) return;
-    _isNavigating = true;
 
     final auth = Provider.of<AuthState>(context, listen: false);
+
+    // Await auth initialization with timeout so app NEVER navigates to login while auth is initializing
+    try {
+      await auth.authInitialized.timeout(const Duration(seconds: 4));
+    } catch (_) {
+      // Timeout reached: proceed with whatever auth status is available
+    }
+
+    if (!mounted || _isNavigating) return;
+    _isNavigating = true;
 
     Widget nextScreen;
     if (auth.status == AuthStatus.authenticated) {

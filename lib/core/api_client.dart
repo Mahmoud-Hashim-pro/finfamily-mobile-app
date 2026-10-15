@@ -57,7 +57,8 @@ class ApiClient {
                 path.contains('/mfa/verify') ||
                 path.contains('/change-password') ||
                 path.contains('/reset-child-pin') ||
-                path.contains('/verify-pin');
+                path.contains('/verify-pin') ||
+                path.contains('/google');
 
             final responseData = error.response?.data;
             final detail = (responseData is Map ? responseData['detail'] : '').toString().toLowerCase();
