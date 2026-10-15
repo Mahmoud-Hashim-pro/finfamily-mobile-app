@@ -18,6 +18,7 @@ class SecureStorageService {
   static const String _keyRole = 'finfamily_role';
   static const String _keyUserId = 'finfamily_user_id';
   static const String _keyFamilyId = 'finfamily_family_id';
+  static const String _keyHasSession = 'finfamily_has_session';
 
   Future<void> saveSession({
     required String token,
@@ -25,7 +26,7 @@ class SecureStorageService {
     String? userId,
     String? familyId,
   }) async {
-    // 1. Write to FlutterSecureStorage
+    // 1. Bearer Token MUST ONLY be stored in platform-backed encrypted secure storage
     try {
       await _storage.write(key: _keyToken, value: token);
       await _storage.write(key: _keyRole, value: role);
@@ -40,13 +41,13 @@ class SecureStorageService {
         await _storage.delete(key: _keyFamilyId);
       }
     } catch (_) {
-      // In case FlutterSecureStorage throws, proceed to SharedPreferences backup
+      // In case FlutterSecureStorage throws on initial write
     }
 
-    // 2. Write to SharedPreferences as reliable fallback/backup
+    // 2. SharedPreferences ONLY stores non-sensitive UI display metadata (NEVER the bearer token)
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_keyToken, token);
+      await prefs.remove(_keyToken); // Ensure bearer token is NEVER stored in plaintext preferences
       await prefs.setString(_keyRole, role);
       if (userId != null && userId.isNotEmpty) {
         await prefs.setString(_keyUserId, userId);
@@ -58,6 +59,7 @@ class SecureStorageService {
       } else {
         await prefs.remove(_keyFamilyId);
       }
+      await prefs.setBool(_keyHasSession, true);
     } catch (_) {}
   }
 
@@ -71,37 +73,42 @@ class SecureStorageService {
     } catch (_) {}
   }
 
-  Future<String?> _readValue(String key) async {
-    // Attempt 1: Read from FlutterSecureStorage
+  /// Bearer token is strictly read from platform-backed secure storage.
+  Future<String?> getToken() async {
+    try {
+      return await _storage.read(key: _keyToken);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _readMetadata(String key) async {
     try {
       final val = await _storage.read(key: key);
       if (val != null && val.isNotEmpty) {
         return val;
       }
-    } catch (_) {
-      // Fallback on exception (e.g. Android Keystore reset / decryption error)
-    }
-
-    // Attempt 2: Automatic fallback to SharedPreferences if null or on exception
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final val = prefs.getString(key);
-      if (val != null && val.isNotEmpty) {
-        // Self-heal: sync back to secure storage
-        try {
-          await _storage.write(key: key, value: val);
-        } catch (_) {}
-        return val;
-      }
     } catch (_) {}
 
-    return null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(key);
+    } catch (_) {
+      return null;
+    }
   }
 
-  Future<String?> getToken() => _readValue(_keyToken);
-  Future<String?> getRole() => _readValue(_keyRole);
-  Future<String?> getUserId() => _readValue(_keyUserId);
-  Future<String?> getFamilyId() => _readValue(_keyFamilyId);
+  Future<String?> getRole() => _readMetadata(_keyRole);
+  Future<String?> getUserId() => _readMetadata(_keyUserId);
+  Future<String?> getFamilyId() => _readMetadata(_keyFamilyId);
+  Future<bool> hasCachedSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_keyHasSession) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<void> clearSession() async {
     // Clear FlutterSecureStorage
@@ -123,6 +130,7 @@ class SecureStorageService {
       await prefs.remove(_keyRole);
       await prefs.remove(_keyUserId);
       await prefs.remove(_keyFamilyId);
+      await prefs.remove(_keyHasSession);
     } catch (_) {}
   }
 }

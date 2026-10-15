@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'api_client.dart';
 import 'secure_storage.dart';
 import 'error_handler.dart';
@@ -23,6 +24,7 @@ class AuthState extends ChangeNotifier {
   // Liveness / readiness synchronization for splash screen and route guards
   Completer<void> _authInitCompleter = Completer<void>();
   bool _isInitialized = false;
+  bool _isServerVerified = false;
 
   AuthStatus get status => _status;
   String? get role => _role;
@@ -32,6 +34,7 @@ class AuthState extends ChangeNotifier {
   String? get tempLoginToken => _tempLoginToken;
   bool get isParent => _role == 'parent';
   bool get isChild => _role == 'child';
+  bool get isServerVerified => _isServerVerified;
 
   // Synchronization helpers
   Future<void> get authInitialized => _authInitCompleter.future;
@@ -51,6 +54,7 @@ class AuthState extends ChangeNotifier {
       _status = AuthStatus.unauthenticated;
       _user = null;
       _role = null;
+      _isServerVerified = false;
       _tempLoginToken = null;
       _pendingParentEmail = null;
       _pendingParentPassword = null;
@@ -115,6 +119,7 @@ class AuthState extends ChangeNotifier {
           }
 
           _status = AuthStatus.authenticated;
+          _isServerVerified = true;
         } else {
           // If response format is unexpected, preserve active authenticated state
           _status = AuthStatus.authenticated;
@@ -190,19 +195,38 @@ class AuthState extends ChangeNotifier {
     }
   }
 
-  // Google / Gmail Sign-in
-  Future<bool> loginWithGoogle({String? idToken, String? email, String? name}) async {
+  // Genuine Google / Gmail Sign-in with cryptographically verified ID Token
+  Future<bool> loginWithGoogle({String? manualIdToken}) async {
     _status = AuthStatus.loading;
     _errorMessage = null;
     notifyListeners();
 
     try {
+      String? idToken = manualIdToken;
+
+      if (idToken == null || idToken.isEmpty) {
+        final GoogleSignIn googleSignIn = GoogleSignIn(
+          scopes: ['email', 'profile'],
+        );
+        final GoogleSignInAccount? account = await googleSignIn.signIn();
+        if (account == null) {
+          _status = AuthStatus.unauthenticated;
+          notifyListeners();
+          return false; // User cancelled flow
+        }
+
+        final GoogleSignInAuthentication authAuth = await account.authentication;
+        idToken = authAuth.idToken;
+      }
+
+      if (idToken == null || idToken.isEmpty) {
+        throw Exception('لم نتمكن من الحصول على رمز التحقق (ID Token) المعتمد من Google');
+      }
+
       final response = await _api.post(
         ApiConfig.googleLogin,
         data: {
-          if (idToken != null && idToken.isNotEmpty) 'id_token': idToken,
-          if (email != null && email.isNotEmpty) 'email': email.trim().toLowerCase(),
-          if (name != null && name.isNotEmpty) 'name': name.trim(),
+          'id_token': idToken,
         },
       );
 
@@ -226,6 +250,7 @@ class AuthState extends ChangeNotifier {
 
       await _storage.saveSession(token: token, role: _role ?? 'parent');
       _status = AuthStatus.authenticated;
+      _isServerVerified = true;
       notifyListeners();
       await checkAuth();
       return true;

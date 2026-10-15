@@ -285,22 +285,10 @@ class _ParentLoginScreenState extends State<ParentLoginScreen> {
 
   Future<void> _handleGoogleLogin() async {
     final auth = Provider.of<AuthState>(context, listen: false);
-    String? email = _emailController.text.trim();
-
-    if (email.isEmpty || !email.contains('@')) {
-      email = await _showGoogleEmailPrompt();
-      if (email == null || email.trim().isEmpty) return;
-    }
-
     setState(() => _isGoogleLoading = true);
 
     try {
-      final name = email.split('@').first.replaceAll('.', ' ');
-      final success = await auth.loginWithGoogle(
-        email: email.trim(),
-        name: name,
-      );
-
+      final success = await auth.loginWithGoogle();
       if (!mounted) return;
 
       if (success) {
@@ -317,84 +305,19 @@ class _ParentLoginScreenState extends State<ParentLoginScreen> {
           ),
         );
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تعذر إتمام الدخول عبر Google: ${e.toString()}'),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _isGoogleLoading = false);
       }
     }
-  }
-
-  Future<String?> _showGoogleEmailPrompt() async {
-    final promptController = TextEditingController();
-    String? dialogError;
-
-    return await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: const [
-              _GoogleIconWidget(size: 22),
-              SizedBox(width: 10),
-              Text(
-                'تسجيل الدخول عبر Google',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'أدخل بريدك الإلكتروني لدى Google / Gmail للمتابعة فوراً إلى حسابك العائلي:',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: promptController,
-                keyboardType: TextInputType.emailAddress,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: 'بريد Google / Gmail',
-                  hintText: 'name@gmail.com',
-                  prefixIcon: const Icon(Icons.account_circle_outlined, size: 20),
-                  filled: true,
-                  fillColor: AppTheme.backgroundLight,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              if (dialogError != null) ...[
-                const SizedBox(height: 8),
-                Text(dialogError!, style: const TextStyle(color: AppTheme.coral, fontSize: 12)),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, null),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final text = promptController.text.trim();
-                if (text.isEmpty || !text.contains('@')) {
-                  setDialogState(() => dialogError = 'يرجى إدخال بريد إلكتروني صحيح');
-                  return;
-                }
-                Navigator.pop(ctx, text);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.navy,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('متابعة'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
