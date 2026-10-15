@@ -18,7 +18,6 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
   bool _isLoading = true;
   String? _errorMessage;
   double? _dailyLimit;
-  double _balance = 0.0;
   List<dynamic> _transactions = [];
 
   CardModel? _card;
@@ -50,7 +49,6 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
 
       if (!mounted) return;
       setState(() {
-        _balance = (data['balance'] as num?)?.toDouble() ?? 0.0;
         _dailyLimit = (data['daily_limit'] as num?)?.toDouble();
         _card = CardModel(
           id: data['id']?.toString() ?? '',

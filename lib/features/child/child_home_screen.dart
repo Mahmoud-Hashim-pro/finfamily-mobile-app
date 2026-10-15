@@ -17,7 +17,6 @@ class ChildHomeScreen extends StatefulWidget {
 }
 
 class _ChildHomeScreenState extends State<ChildHomeScreen> {
-  bool _isLoading = true;
   double _balance = 0.0;
   String _cardNumber = '5061 •••• •••• 1234';
   int _activeMissionsCount = 0;
@@ -53,13 +52,11 @@ class _ChildHomeScreenState extends State<ChildHomeScreen> {
         if (goals.isNotEmpty) {
           _firstGoalName = goals.first['name'];
         }
-        _isLoading = false;
         _errorMessage = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _isLoading = false;
         _errorMessage = ApiErrorHandler.getErrorMessage(e);
       });
     }

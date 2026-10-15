@@ -122,7 +122,9 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     ).then((_) {
       // Background check for updates after landing
-      UpdateChecker.checkForUpdates(context);
+      if (mounted) {
+        UpdateChecker.checkForUpdates(context);
+      }
     });
   }
 

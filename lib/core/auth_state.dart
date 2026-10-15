@@ -22,7 +22,7 @@ class AuthState extends ChangeNotifier {
   String? _pendingParentPassword;
 
   // Liveness / readiness synchronization for splash screen and route guards
-  Completer<void> _authInitCompleter = Completer<void>();
+  final Completer<void> _authInitCompleter = Completer<void>();
   bool _isInitialized = false;
   bool _isServerVerified = false;
 

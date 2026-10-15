@@ -36,19 +36,12 @@ class _CreateChoreDialogState extends State<CreateChoreDialog> {
 
   List<dynamic> _children = [];
   String? _selectedChildId;
-  String _selectedCategory = 'cleaning';
+  final String _selectedCategory = 'cleaning';
   String _selectedIcon = '🧹';
   String _selectedDueLabel = 'اليوم';
   bool _isLoadingChildren = true;
   bool _isSubmitting = false;
   String? _errorMessage;
-
-  final List<Map<String, String>> _categories = [
-    {'id': 'cleaning', 'label': 'تنظيف وترتيب', 'icon': '🧹'},
-    {'id': 'study', 'label': 'دراسة ومذاكرة', 'icon': '📚'},
-    {'id': 'routine', 'label': 'عادات وسلوك', 'icon': '🛏️'},
-    {'id': 'helping', 'label': 'مساعدة العائلة', 'icon': '🛒'},
-  ];
 
   final List<String> _icons = ['🧹', '🛏️', '📚', '🎒', '🧽', '🌱', '🐕', '⭐', '🏆'];
   final List<String> _dueLabels = ['اليوم', 'غداً', 'نهاية الأسبوع', 'خلال أسبوع'];

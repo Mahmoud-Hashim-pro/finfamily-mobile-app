@@ -67,10 +67,10 @@ class _ChildProfileScreenState extends State<ChildProfileScreen> {
 
       if (!mounted) return;
       setState(() {
-        if (responses[0] != null && responses[0].data != null) {
+        if (responses[0].data != null) {
           _walletData = responses[0].data;
         }
-        if (responses[1] != null && responses[1].data != null) {
+        if (responses[1].data != null) {
           _missions = responses[1].data is List ? responses[1].data : [];
         }
 

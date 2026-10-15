@@ -12,7 +12,6 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  bool _isLoading = true;
   String? _errorMessage;
   double _walletBalance = 0.0;
   double _savingsBalance = 0.0;
@@ -88,13 +87,11 @@ class _WalletScreenState extends State<WalletScreen> {
         }
         _categories = finalCategories;
         _isCategoriesEstimated = isEstimated;
-        _isLoading = false;
         _errorMessage = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _isLoading = false;
         _errorMessage = ApiErrorHandler.getErrorMessage(e);
       });
     }

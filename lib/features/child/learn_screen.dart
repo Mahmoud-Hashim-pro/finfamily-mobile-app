@@ -521,6 +521,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       final double? newBalance = (data['new_balance'] as num?)?.toDouble();
       final int? newStreak = (data['new_streak'] as num?)?.toInt();
 
+      if (!context.mounted) return;
       final auth = Provider.of<AuthState>(context, listen: false);
       auth.updateChildStats(
         xp: newXp,
