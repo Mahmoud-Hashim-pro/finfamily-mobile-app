@@ -40,6 +40,13 @@ android {
     }
 
     def keystorePath = System.getenv("KEYSTORE_FILE") ?: System.getenv("KEYSTORE_PATH")
+    def keystoreBase64 = System.getenv("KEYSTORE_BASE64")
+    if ((keystorePath == null || !file(keystorePath).exists()) && keystoreBase64 != null && !keystoreBase64.trim().isEmpty()) {
+        def decodedFile = file("${layout.buildDirectory.get().asFile}/release.keystore")
+        decodedFile.parentFile.mkdirs()
+        decodedFile.bytes = keystoreBase64.decodeBase64()
+        keystorePath = decodedFile.absolutePath
+    }
     def hasReleaseKeystore = keystorePath != null && file(keystorePath).exists()
 
     def isCi = "true".equalsIgnoreCase(System.getenv("CI")) || "true".equalsIgnoreCase(System.getenv("REQUIRE_RELEASE_SIGNING"))
