@@ -117,6 +117,14 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                     ),
                   ),
 
+                if (_isLoading && _overview == null)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24.0),
+                      child: CircularProgressIndicator(color: AppTheme.navy),
+                    ),
+                  ),
+
                 // Header: Profile & Family Code
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,

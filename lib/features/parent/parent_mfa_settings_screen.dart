@@ -17,12 +17,10 @@ class ParentMfaSettingsScreen extends StatefulWidget {
 class _ParentMfaSettingsScreenState extends State<ParentMfaSettingsScreen> {
   bool _isLoading = true;
   bool _mfaEnabled = false;
-  String? _errorMessage;
 
   // Setup state
   bool _isSettingUp = false;
   String? _setupSecret;
-  String? _setupOtpauthUrl;
   final _totpController = TextEditingController();
   List<String> _recoveryCodes = [];
 
@@ -42,7 +40,6 @@ class _ParentMfaSettingsScreenState extends State<ParentMfaSettingsScreen> {
     if (!mounted) return;
     setState(() {
       _isLoading = true;
-      _errorMessage = null;
     });
 
     try {
@@ -126,9 +123,7 @@ class _ParentMfaSettingsScreenState extends State<ParentMfaSettingsScreen> {
                   setState(() {
                     _isSettingUp = true;
                     _setupSecret = data['secret'] ?? data['secret_key'] ?? '';
-                    _setupOtpauthUrl = data['otpauth_url'];
                     _totpController.clear();
-                    _errorMessage = null;
                   });
                 } catch (e) {
                   setDialogState(() {
