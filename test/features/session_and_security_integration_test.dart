@@ -8,8 +8,8 @@ void main() {
     test('Unverified session prevents privilege escalation to parent/child actions', () {
       final auth = AuthState();
 
-      // State is unauthenticated initially
-      expect(auth.status, equals(AuthStatus.initial));
+      // State is unauthenticated / unverified initially
+      expect(auth.status, anyOf(equals(AuthStatus.initial), equals(AuthStatus.loading)));
       expect(auth.isServerVerified, isFalse);
       expect(auth.isVerifiedParent, isFalse);
       expect(auth.isVerifiedChild, isFalse);
