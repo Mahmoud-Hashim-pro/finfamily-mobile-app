@@ -222,6 +222,9 @@ class AuthState extends ChangeNotifier {
       if (idToken == null || idToken.isEmpty) {
         final GoogleSignIn googleSignIn = GoogleSignIn(
           scopes: ['email', 'profile'],
+          serverClientId: ApiConfig.googleServerClientId.isNotEmpty
+              ? ApiConfig.googleServerClientId
+              : null,
         );
         final GoogleSignInAccount? account = await googleSignIn.signIn();
         if (account == null) {

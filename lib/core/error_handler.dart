@@ -107,6 +107,12 @@ class ApiErrorHandler {
       return 'رابط أو رمز إعادة التعيين غير صالح أو منتهي الصلاحية';
     }
     if (lower.contains('field required')) return 'هذا الحقل مطلوب';
+    if (lower.contains('10') && (lower.contains('apiexception') || lower.contains('sign_in_failed'))) {
+      return 'تعذر إتمام الدخول عبر Google (كود 10): يلزم ربط بصمة التطبيق (SHA-1) بـ Google Console، أو يمكنك الدخول بالبريد وكلمة المرور مباشرة.';
+    }
+    if (lower.contains('sign_in_canceled') || lower.contains('sign_in_cancelled')) {
+      return 'تم إلغاء عملية تسجيل الدخول عبر Google';
+    }
     if (lower.contains('string should have at least')) return 'النص قصير جداً، يرجى إدخال المزيد من الأحرف';
     return detail;
   }

@@ -68,5 +68,12 @@ void main() {
       final message = ApiErrorHandler.getErrorMessage(dioException);
       expect(message, contains('تم تجاوز الحد المسموح من المحاولات'));
     });
+
+    test('translates Google Sign-In ApiException 10 developer error into actionable Arabic message', () {
+      const err = 'PlatformException(sign_in_failed, com.google.android.gms.common.api.ApiException: 10: , null, null)';
+      final message = ApiErrorHandler.getErrorMessage(err);
+      expect(message, contains('كود 10'));
+      expect(message, contains('SHA-1'));
+    });
   });
 }

@@ -9,6 +9,12 @@ class ApiConfig {
   static const Duration connectTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 30);
 
+  // Google OAuth Client Configuration (Web Client ID for server-side token generation)
+  static const String googleServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue: '',
+  );
+
   // Auth endpoints
   static const String parentRegister = '/auth/register';
   static const String parentLogin = '/auth/login';
