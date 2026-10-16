@@ -101,11 +101,11 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "FinFamily Mobile APK ${{ github.ref_name }}"
           body: |
-            FinFamily Mobile ${{ github.ref_name }} (Build 8)
+            FinFamily Mobile ${{ github.ref_name }} (Build 9)
             - Official production release signed with FinFamily release certificate.
+            - Enhanced Google Sign-In SDK integration with serverClientId and user-friendly error translations.
+            - Bilingual in-app and web Privacy Policy and Terms of Service (COPPA & Google OAuth compliant).
             - Dual-persistence session management (secure credentials preserved across app restarts).
-            - Native Google Sign-In SDK integration.
-            - Authoritative server-side mini-game verification and daily bonus anti-cheat.
             - Centralized multi-family isolation and transaction protection.
           files: |
             build/app/outputs/flutter-apk/app-release.apk
