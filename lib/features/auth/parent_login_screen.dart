@@ -7,6 +7,7 @@ import '../../core/api_client.dart';
 import '../../core/error_handler.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'parent_register_screen.dart';
 import 'mfa_screen.dart';
 import '../parent/parent_nav_shell.dart';
@@ -528,6 +529,25 @@ class _ParentLoginScreenState extends State<ParentLoginScreen> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 10),
+                Center(
+                  child: TextButton(
+                    onPressed: () async {
+                      final uri = Uri.parse('https://finfamily-backend.vercel.app/privacy');
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      }
+                    },
+                    child: const Text(
+                      'سياسة الخصوصية وحماية البيانات',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textMuted,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
