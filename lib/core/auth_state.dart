@@ -298,7 +298,7 @@ class AuthState extends ChangeNotifier {
     _status = AuthStatus.loading;
     _errorMessage = null;
     _pendingParentEmail = email.trim();
-    _pendingParentPassword = password;
+    _pendingParentPassword = null; // Zero memory retention: never store password in state
     notifyListeners();
 
     try {
@@ -310,6 +310,7 @@ class AuthState extends ChangeNotifier {
       final data = response.data;
       if (data['mfa_required'] == true) {
         _tempLoginToken = data['temp_token'];
+        _pendingParentPassword = null; // Zero memory retention on MFA challenge
         _status = AuthStatus.requiresMfa;
         notifyListeners();
         return false;
@@ -351,8 +352,13 @@ class AuthState extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
+    // If an MFA challenge token is active, authenticate recovery code directly without retaining password
+    if (_tempLoginToken != null) {
+      return verifyMfa(recoveryCode);
+    }
+
     final targetEmail = email?.trim().toLowerCase() ?? _pendingParentEmail;
-    final targetPassword = password ?? _pendingParentPassword;
+    final targetPassword = password;
 
     if (targetEmail == null || targetPassword == null) {
       _errorMessage = 'بيانات تسجيل الدخول غير متوفرة، يرجى كتابة البريد وكلمة المرور مجدداً';
