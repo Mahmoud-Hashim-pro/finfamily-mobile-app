@@ -19,7 +19,6 @@ class AuthState extends ChangeNotifier {
   String? _errorMessage;
   String? _tempLoginToken;
   String? _pendingParentEmail;
-  String? _pendingParentPassword;
 
   // Liveness / readiness synchronization for splash screen and route guards
   final Completer<void> _authInitCompleter = Completer<void>();
@@ -61,7 +60,6 @@ class AuthState extends ChangeNotifier {
       _isServerVerified = false;
       _tempLoginToken = null;
       _pendingParentEmail = null;
-      _pendingParentPassword = null;
       notifyListeners();
     };
     checkAuth();
@@ -253,7 +251,6 @@ class AuthState extends ChangeNotifier {
         // FF-01: Parent enabled MFA; prompt for TOTP before granting full session
         _tempLoginToken = data['temp_token'];
         _pendingParentEmail = null;
-        _pendingParentPassword = null;
         _status = AuthStatus.requiresMfa;
         notifyListeners();
         return false;
@@ -266,7 +263,6 @@ class AuthState extends ChangeNotifier {
 
       _tempLoginToken = null;
       _pendingParentEmail = null;
-      _pendingParentPassword = null;
       _role = 'parent';
 
       if (data['user'] != null && data['user'] is Map) {
@@ -298,7 +294,6 @@ class AuthState extends ChangeNotifier {
     _status = AuthStatus.loading;
     _errorMessage = null;
     _pendingParentEmail = email.trim();
-    _pendingParentPassword = null; // Zero memory retention: never store password in state
     notifyListeners();
 
     try {
@@ -310,7 +305,6 @@ class AuthState extends ChangeNotifier {
       final data = response.data;
       if (data['mfa_required'] == true) {
         _tempLoginToken = data['temp_token'];
-        _pendingParentPassword = null; // Zero memory retention on MFA challenge
         _status = AuthStatus.requiresMfa;
         notifyListeners();
         return false;
@@ -319,7 +313,6 @@ class AuthState extends ChangeNotifier {
       final token = data['access_token'];
       _tempLoginToken = null;
       _pendingParentEmail = null;
-      _pendingParentPassword = null;
 
       final saved = await _storage.saveSession(token: token, role: 'parent');
       if (!saved) {
@@ -328,7 +321,6 @@ class AuthState extends ChangeNotifier {
       await checkAuth();
       return true;
     } catch (e) {
-      _pendingParentPassword = null; // Clear sensitive password immediately on login failure (FF-26)
       _errorMessage = ApiErrorHandler.getErrorMessage(e);
       _status = AuthStatus.unauthenticated;
       notifyListeners();
@@ -340,7 +332,6 @@ class AuthState extends ChangeNotifier {
   void cancelMfa() {
     _tempLoginToken = null;
     _pendingParentEmail = null;
-    _pendingParentPassword = null;
     _status = AuthStatus.unauthenticated;
     _errorMessage = null;
     notifyListeners();
@@ -380,7 +371,6 @@ class AuthState extends ChangeNotifier {
       final token = response.data['access_token'];
       _tempLoginToken = null;
       _pendingParentEmail = null;
-      _pendingParentPassword = null;
 
       final saved = await _storage.saveSession(token: token, role: 'parent');
       if (!saved) {
@@ -414,7 +404,6 @@ class AuthState extends ChangeNotifier {
       final token = response.data['access_token'];
       _tempLoginToken = null;
       _pendingParentEmail = null;
-      _pendingParentPassword = null;
 
       final saved = await _storage.saveSession(token: token, role: 'parent');
       if (!saved) {
@@ -449,7 +438,6 @@ class AuthState extends ChangeNotifier {
       final token = response.data['access_token'];
       _tempLoginToken = null;
       _pendingParentEmail = null;
-      _pendingParentPassword = null;
 
       final saved = await _storage.saveSession(token: token, role: 'child');
       if (!saved) {
@@ -480,7 +468,6 @@ class AuthState extends ChangeNotifier {
       final token = response.data['access_token'];
       _tempLoginToken = null;
       _pendingParentEmail = null;
-      _pendingParentPassword = null;
       _role = 'admin';
 
       final saved = await _storage.saveSession(token: token, role: 'admin');
@@ -522,7 +509,6 @@ class AuthState extends ChangeNotifier {
       final token = response.data['access_token'];
       _tempLoginToken = null;
       _pendingParentEmail = null;
-      _pendingParentPassword = null;
 
       final saved = await _storage.saveSession(token: token, role: 'parent');
       if (!saved) {
@@ -547,7 +533,6 @@ class AuthState extends ChangeNotifier {
     _isServerVerified = false;
     _tempLoginToken = null;
     _pendingParentEmail = null;
-    _pendingParentPassword = null;
     _status = AuthStatus.unauthenticated;
     notifyListeners();
   }
