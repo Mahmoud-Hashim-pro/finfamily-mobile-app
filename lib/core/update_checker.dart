@@ -271,13 +271,19 @@ class _InAppUpdateDialogState extends State<_InAppUpdateDialog> {
         }
       }
 
-      if (widget.expectedSha256 != null && widget.expectedSha256!.isNotEmpty) {
-        // Stream SHA-256 calculation to keep RAM bounded
-        final digest = await sha256.bind(downloadedFile.openRead()).first;
-        if (digest.toString().toLowerCase() != widget.expectedSha256!.toLowerCase().trim()) {
-          await downloadedFile.delete();
-          throw Exception('فشل التحقق من التوقيع الرقمي للملف (SHA-256 hash mismatch)');
-        }
+      // FF-22: Mandatory cryptographic checksum verification. Fail closed if checksum is absent, malformed, or mismatched.
+      final cleanSha = widget.expectedSha256?.trim().toLowerCase() ?? '';
+      final isValidSha = RegExp(r'^[a-f0-9]{64}$').hasMatch(cleanSha);
+      if (!isValidSha) {
+        await downloadedFile.delete();
+        throw Exception('فشل التحقق الأمني: التوقيع الرقمي (SHA-256) للتحديث مفقود أو غير صالح');
+      }
+
+      // Stream SHA-256 calculation to keep RAM bounded
+      final digest = await sha256.bind(downloadedFile.openRead()).first;
+      if (digest.toString().toLowerCase() != cleanSha) {
+        await downloadedFile.delete();
+        throw Exception('فشل التحقق من التوقيع الرقمي للملف (SHA-256 hash mismatch)');
       }
 
       setState(() {
