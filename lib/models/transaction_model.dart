@@ -36,7 +36,7 @@ class TransactionModel {
     if (rawAmount == null || rawAmount is! num) {
       throw const FormatException('TransactionModel: missing or non-numeric required field "amount"');
     }
-    final amount = (rawAmount as num).toDouble();
+    final amount = rawAmount.toDouble();
 
     final rawDirection = json['direction']?.toString().trim().toLowerCase();
     if (rawDirection == null || (rawDirection != 'credit' && rawDirection != 'debit')) {

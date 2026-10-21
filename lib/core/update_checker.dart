@@ -11,8 +11,8 @@ import 'api_client.dart';
 
 class UpdateChecker {
   // Current installed app version & build number (aligned with pubspec.yaml and ApiConfig)
-  static const String currentVersion = ApiConfig.appVersion;
-  static const int currentBuildNumber = ApiConfig.appBuildNumber;
+  static const String currentVersion = ApiConfig.currentAppVersion;
+  static const int currentBuildNumber = ApiConfig.currentAppBuildNumber;
 
   // Singleton guard against concurrent checks or overlapping dialogs
   static bool _isCheckingOrShowing = false;
