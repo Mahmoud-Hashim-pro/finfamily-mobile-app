@@ -12,7 +12,7 @@ class ApiConfig {
   // Google OAuth Client Configuration (Web Client ID for server-side token generation)
   static const String googleServerClientId = String.fromEnvironment(
     'GOOGLE_SERVER_CLIENT_ID',
-    defaultValue: '',
+    defaultValue: '53561071157-bf7r6nmn7111sgk5174gtgfunr260i06.apps.googleusercontent.com',
   );
 
   // App Version & Release Configuration (FF-05 & FF-31: Single Source of Truth)
