@@ -14,15 +14,19 @@ class ApiClient {
     const envBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     String effectiveBaseUrl = envBaseUrl.isNotEmpty ? envBaseUrl : ApiConfig.baseUrl;
 
-    // Transport security check (BUG-159): Enforce HTTPS for non-localhost endpoints
+    // Transport security check (BUG-159 & FF-30): Fail-closed validation for effectiveBaseUrl
     final uri = Uri.tryParse(effectiveBaseUrl);
-    if (uri != null && uri.host.isNotEmpty) {
-      final isLocalhost = uri.host == 'localhost' ||
-          uri.host == '127.0.0.1' ||
-          uri.host == '10.0.2.2';
-      if (!isLocalhost && uri.scheme == 'http') {
-        effectiveBaseUrl = effectiveBaseUrl.replaceFirst('http://', 'https://');
-      }
+    if (uri == null || uri.host.isEmpty || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      throw StateError(
+        'Invalid API base URL: "$effectiveBaseUrl". effectiveBaseUrl must have a valid scheme (http/https) and non-empty host.',
+      );
+    }
+
+    final isLocalhost = uri.host == 'localhost' ||
+        uri.host == '127.0.0.1' ||
+        uri.host == '10.0.2.2';
+    if (!isLocalhost && uri.scheme == 'http') {
+      effectiveBaseUrl = effectiveBaseUrl.replaceFirst('http://', 'https://');
     }
 
     dio = Dio(

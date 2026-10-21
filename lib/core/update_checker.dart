@@ -10,9 +10,9 @@ import '../config/theme.dart';
 import 'api_client.dart';
 
 class UpdateChecker {
-  // Current installed app version & build number (aligned with pubspec.yaml)
-  static const String currentVersion = '1.1.0';
-  static const int currentBuildNumber = 8;
+  // Current installed app version & build number (aligned with pubspec.yaml and ApiConfig)
+  static const String currentVersion = ApiConfig.appVersion;
+  static const int currentBuildNumber = ApiConfig.appBuildNumber;
 
   // Singleton guard against concurrent checks or overlapping dialogs
   static bool _isCheckingOrShowing = false;
@@ -238,31 +238,42 @@ class _InAppUpdateDialogState extends State<_InAppUpdateDialog> {
 
       if (!mounted) return;
 
-      // Verify downloaded APK integrity
+      // Verify downloaded APK integrity with streaming checks to prevent OOM
       final downloadedFile = File(savePath);
       if (!await downloadedFile.exists()) {
         throw Exception('تعذر حفظ ملف التحديث');
       }
 
-      final bytes = await downloadedFile.readAsBytes();
-      if (bytes.length < 4 ||
-          bytes[0] != 0x50 ||
-          bytes[1] != 0x4B ||
-          bytes[2] != 0x03 ||
-          bytes[3] != 0x04) {
-        await downloadedFile.delete();
-        throw Exception('ملف التحديث غير صالح أو تالف (ZIP/APK magic header verification failed)');
+      // Check magic header bytes (PK\x03\x04) without loading entire file into memory (FF-29, FF-31)
+      final raf = await downloadedFile.open(mode: FileMode.read);
+      int fileLength = 0;
+      try {
+        fileLength = await raf.length();
+        if (fileLength < 4) {
+          throw Exception('ملف التحديث غير صالح أو تالف');
+        }
+        final header = await raf.read(4);
+        if (header.length < 4 ||
+            header[0] != 0x50 ||
+            header[1] != 0x4B ||
+            header[2] != 0x03 ||
+            header[3] != 0x04) {
+          throw Exception('ملف التحديث غير صالح أو تالف (ZIP/APK magic header verification failed)');
+        }
+      } finally {
+        await raf.close();
       }
 
       if (widget.expectedSize != null && widget.expectedSize! > 0) {
-        if (bytes.length != widget.expectedSize) {
+        if (fileLength != widget.expectedSize) {
           await downloadedFile.delete();
           throw Exception('حجم الملف المحمل لا يتطابق مع الحجم المصرح به من الخادم');
         }
       }
 
       if (widget.expectedSha256 != null && widget.expectedSha256!.isNotEmpty) {
-        final digest = sha256.convert(bytes);
+        // Stream SHA-256 calculation to keep RAM bounded
+        final digest = await sha256.bind(downloadedFile.openRead()).first;
         if (digest.toString().toLowerCase() != widget.expectedSha256!.toLowerCase().trim()) {
           await downloadedFile.delete();
           throw Exception('فشل التحقق من التوقيع الرقمي للملف (SHA-256 hash mismatch)');

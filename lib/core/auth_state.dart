@@ -249,7 +249,17 @@ class AuthState extends ChangeNotifier {
       );
 
       final data = response.data;
-      final token = data['access_token'];
+      if (data != null && data is Map && data['mfa_required'] == true) {
+        // FF-01: Parent enabled MFA; prompt for TOTP before granting full session
+        _tempLoginToken = data['temp_token'];
+        _pendingParentEmail = null;
+        _pendingParentPassword = null;
+        _status = AuthStatus.requiresMfa;
+        notifyListeners();
+        return false;
+      }
+
+      final token = data?['access_token'];
       if (token == null || (token is String && token.isEmpty)) {
         throw Exception('لم يتم استلام رمز الدخول من الخادم');
       }
@@ -317,11 +327,22 @@ class AuthState extends ChangeNotifier {
       await checkAuth();
       return true;
     } catch (e) {
+      _pendingParentPassword = null; // Clear sensitive password immediately on login failure (FF-26)
       _errorMessage = ApiErrorHandler.getErrorMessage(e);
       _status = AuthStatus.unauthenticated;
       notifyListeners();
       return false;
     }
+  }
+
+  /// Cancels any pending MFA flow, clearing sensitive pending credentials and tokens (FF-26)
+  void cancelMfa() {
+    _tempLoginToken = null;
+    _pendingParentEmail = null;
+    _pendingParentPassword = null;
+    _status = AuthStatus.unauthenticated;
+    _errorMessage = null;
+    notifyListeners();
   }
 
   // Parent Recovery Code Login
