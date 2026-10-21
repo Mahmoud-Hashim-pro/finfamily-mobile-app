@@ -3,6 +3,7 @@ import '../../config/theme.dart';
 import '../../core/api_client.dart';
 import '../../config/api_config.dart';
 import '../../core/error_handler.dart';
+import '../../core/idempotency.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import 'family_members_screen.dart';
@@ -105,11 +106,13 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
 
     try {
       final note = _noteController.text.trim();
+      final idemKey = generateIdempotencyKey('allowance');
       await ApiClient().post(
         '/wallet/child/$_selectedChildId/allowance',
         data: {
           'amount': amount,
           'label': note.isNotEmpty ? note : 'المصروف',
+          'idempotency_key': idemKey,
         },
       );
 

@@ -275,23 +275,35 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
     final completed = prefs.getStringList('completed_lessons_$childId') ?? ['les_1'];
 
     final id = lesson['id'] as String;
-    final int xp = (lesson['xp'] as num?)?.toInt() ?? 20;
+    final int clientXp = (lesson['xp'] as num?)?.toInt() ?? 20;
+    int awardedXp = clientXp;
 
-    // Send authoritative lesson completion to backend
+    // Send authoritative lesson completion to backend (FF-17: fail-closed on backend rejection)
     try {
       final res = await ApiClient().post(
         '/lessons/complete',
-        data: {'lesson_id': id, 'xp': xp},
+        data: {'lesson_id': id, 'xp': clientXp},
       );
       if (res.data != null && res.data is Map) {
         final int? newXp = (res.data['current_xp'] as num?)?.toInt();
         final int? newLevel = (res.data['current_level'] as num?)?.toInt();
+        final int? serverAwarded = (res.data['xp_awarded'] as num?)?.toInt();
+        if (serverAwarded != null) {
+          awardedXp = serverAwarded;
+        }
         if (newXp != null) {
           auth.updateChildStats(xp: newXp, level: newLevel);
         }
       }
-    } catch (_) {
-      // Local fallback on transient error
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تعذر تسجيل إتمام الدرس. يرجى التحقق من الاتصال بالإنترنت والمحاولة مجدداً.'),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
+      return;
     }
 
     if (!completed.contains(id)) {
@@ -304,7 +316,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('مبروك! أتممت درس "${lesson['title']}" وحصلت على +$xp XP! 🎓'),
+        content: Text('مبروك! أتممت درس "${lesson['title']}" وحصلت على +$awardedXp XP! 🎓'),
         backgroundColor: AppTheme.emerald,
       ),
     );
