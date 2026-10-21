@@ -1,4 +1,5 @@
 # Miscellaneous
+release_v*/
 *.class
 *.log
 *.pyc
