@@ -19,6 +19,7 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
   final _amountController = TextEditingController();
   final _noteController = TextEditingController();
   String? _selectedChildId;
+  String? _currentAllowanceIdempotencyKey;
   bool _isLoading = true;
   bool _isSending = false;
   String? _errorMessage;
@@ -106,7 +107,10 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
 
     try {
       final note = _noteController.text.trim();
-      final idemKey = generateIdempotencyKey('allowance');
+      // FF-12: Retain key across network retries so retry of timed-out request never creates duplicate allowance
+      _currentAllowanceIdempotencyKey ??= generateIdempotencyKey('allowance');
+      final idemKey = _currentAllowanceIdempotencyKey!;
+
       await ApiClient().post(
         '/wallet/child/$_selectedChildId/allowance',
         data: {
@@ -118,6 +122,8 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
 
       if (!mounted) return;
       setState(() => _isSending = false);
+      // Succeeded! Reset the idempotency key for the next separate operation
+      _currentAllowanceIdempotencyKey = null;
       _amountController.clear();
       _noteController.clear();
 
@@ -300,7 +306,10 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
                       return Expanded(
                         child: GestureDetector(
                           onTap: () {
-                            setState(() => _selectedChildId = childId);
+                            setState(() {
+                              _selectedChildId = childId;
+                              _currentAllowanceIdempotencyKey = null;
+                            });
                           },
                           child: Container(
                             margin: const EdgeInsets.symmetric(horizontal: 4),

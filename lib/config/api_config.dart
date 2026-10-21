@@ -16,8 +16,8 @@ class ApiConfig {
   );
 
   // App Version & Release Configuration (FF-05 & FF-31: Single Source of Truth)
-  static const String currentAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.1.3');
-  static const int currentAppBuildNumber = int.fromEnvironment('APP_BUILD_NUMBER', defaultValue: 11);
+  static const String currentAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.1.4');
+  static const int currentAppBuildNumber = int.fromEnvironment('APP_BUILD_NUMBER', defaultValue: 12);
 
   // Auth endpoints
   static const String parentRegister = '/auth/register';
