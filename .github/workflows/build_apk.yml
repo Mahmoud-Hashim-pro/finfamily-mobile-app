@@ -1,29 +1,34 @@
-name: Build Android APK
+name: Build and Release Android APK
 
 on:
   push:
     branches: [ main ]
     tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
+  ci:
+    name: Flutter CI & Verification
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@f2c4f6686ca8e8d6e6d0f28410eeef506ed66aff # v2.18.0
         with:
           flutter-version: '3.27.1'
           channel: 'stable'
@@ -33,19 +38,6 @@ jobs:
           flutter create --platforms=android --org com.finfamily.app --project-name finfamily_mobile .
           git checkout -- .
 
-      - name: Verify Git Tag Matches Pubspec Version
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          PUBSPEC_VER=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1 | tr -d '[:space:]')
-          echo "Triggered Tag: $TAG"
-          echo "Pubspec Version: $PUBSPEC_VER"
-          if [ "$TAG" != "$PUBSPEC_VER" ]; then
-            echo "ERROR: Git Tag 'v$TAG' does not match pubspec.yaml version '$PUBSPEC_VER'!" >&2
-            exit 1
-          fi
-          echo "Tag and pubspec.yaml version match verified."
-
       - name: Install dependencies
         run: flutter pub get
 
@@ -54,6 +46,57 @@ jobs:
 
       - name: Run Flutter unit & widget tests
         run: flutter test
+
+      - name: Build Debug Verification APK (Unsigned, No Secrets)
+        run: flutter build apk --debug
+
+  release:
+    name: Production Release & APK Signing
+    needs: [ci]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Java 17
+        uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # v4.7.0
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@f2c4f6686ca8e8d6e6d0f28410eeef506ed66aff # v2.18.0
+        with:
+          flutter-version: '3.27.1'
+          channel: 'stable'
+
+      - name: Ensure Android Project Tooling & Clean State
+        run: |
+          flutter create --platforms=android --org com.finfamily.app --project-name finfamily_mobile .
+          git checkout -- .
+
+      - name: Verify Git Tag Matches Pubspec Version & Extract Metadata
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PUBSPEC_RAW=$(grep '^version:' pubspec.yaml | awk '{print $2}' | tr -d '[:space:]')
+          PUBSPEC_VER=$(echo "$PUBSPEC_RAW" | cut -d'+' -f1)
+          PUBSPEC_BUILD=$(echo "$PUBSPEC_RAW" | cut -d'+' -f2)
+          echo "Triggered Tag: $TAG"
+          echo "Pubspec Version: $PUBSPEC_VER"
+          echo "Pubspec Build Number: $PUBSPEC_BUILD"
+          if [ "$TAG" != "$PUBSPEC_VER" ]; then
+            echo "ERROR: Git Tag 'v$TAG' does not match pubspec.yaml version '$PUBSPEC_VER'!" >&2
+            exit 1
+          fi
+          echo "PUBSPEC_VERSION=$PUBSPEC_VER" >> $GITHUB_ENV
+          echo "PUBSPEC_BUILD=$PUBSPEC_BUILD" >> $GITHUB_ENV
+          echo "Tag and pubspec.yaml version match verified."
+
+      - name: Install dependencies
+        run: flutter pub get
 
       - name: Decode Production Signing Keystore
         run: |
@@ -87,7 +130,7 @@ jobs:
           cat app-release.apk.sha256
 
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
           name: FinFamily-App
           path: |
@@ -95,13 +138,12 @@ jobs:
             build/app/outputs/flutter-apk/app-release.apk.sha256
 
       - name: Create or Update GitHub Release with APK
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
         with:
           tag_name: ${{ github.ref_name }}
-          name: "FinFamily Mobile APK ${{ github.ref_name }}"
+          name: "FinFamily Mobile ${{ github.ref_name }} (Build ${{ env.PUBSPEC_BUILD }})"
           body: |
-            FinFamily Mobile ${{ github.ref_name }} (Build 9)
+            FinFamily Mobile ${{ github.ref_name }} (Build ${{ env.PUBSPEC_BUILD }})
             - Official production release signed with FinFamily release certificate.
             - Enhanced Google Sign-In SDK integration with serverClientId and user-friendly error translations.
             - Bilingual in-app and web Privacy Policy and Terms of Service (COPPA & Google OAuth compliant).
