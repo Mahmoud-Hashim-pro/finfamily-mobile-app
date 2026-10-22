@@ -75,5 +75,16 @@ void main() {
       expect(message, contains('كود 10'));
       expect(message, contains('SHA-1'));
     });
+
+    test('translates unregistered account and role restriction error messages', () {
+      expect(
+        ApiErrorHandler.getErrorMessage('account not found'),
+        equals('هذا الحساب غير مسجل بعد في FinFamily. يرجى إنشاء حساب جديد.'),
+      );
+      expect(
+        ApiErrorHandler.getErrorMessage('only parent accounts can sign in via google login'),
+        equals('حسابات أولياء الأمور فقط هي المسموح لها بتسجيل الدخول عبر Google'),
+      );
+    });
   });
 }

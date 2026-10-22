@@ -113,6 +113,12 @@ class ApiErrorHandler {
     if (lower.contains('sign_in_canceled') || lower.contains('sign_in_cancelled')) {
       return 'تم إلغاء عملية تسجيل الدخول عبر Google';
     }
+    if (lower.contains('only parent accounts can sign in via google login')) {
+      return 'حسابات أولياء الأمور فقط هي المسموح لها بتسجيل الدخول عبر Google';
+    }
+    if (lower.contains('account not found') || lower.contains('غير مسجل بعد')) {
+      return 'هذا الحساب غير مسجل بعد في FinFamily. يرجى إنشاء حساب جديد.';
+    }
     if (lower.contains('string should have at least')) return 'النص قصير جداً، يرجى إدخال المزيد من الأحرف';
     return detail;
   }

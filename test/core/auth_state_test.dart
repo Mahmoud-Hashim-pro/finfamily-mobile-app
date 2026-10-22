@@ -43,6 +43,16 @@ void main() {
       expect(auth.isServerVerified, isFalse);
       expect(auth.isVerifiedParent, isFalse);
       expect(auth.isVerifiedChild, isFalse);
+      expect(auth.pendingGoogleEmail, isNull);
+      expect(auth.pendingGoogleName, isNull);
+      expect(auth.isGoogleAccountUnregistered, isFalse);
+    });
+
+    test('initial google auth state is clean and unpopulated', () {
+      final auth = AuthState();
+      expect(auth.pendingGoogleEmail, isNull);
+      expect(auth.pendingGoogleName, isNull);
+      expect(auth.isGoogleAccountUnregistered, isFalse);
     });
   });
 

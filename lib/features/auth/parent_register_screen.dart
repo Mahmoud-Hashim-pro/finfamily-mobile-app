@@ -4,10 +4,18 @@ import '../../core/auth_state.dart';
 import '../../config/theme.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
+import '../../widgets/google_icon_widget.dart';
 import '../parent/parent_nav_shell.dart';
 
 class ParentRegisterScreen extends StatefulWidget {
-  const ParentRegisterScreen({super.key});
+  final String? initialEmail;
+  final String? initialName;
+
+  const ParentRegisterScreen({
+    super.key,
+    this.initialEmail,
+    this.initialName,
+  });
 
   @override
   State<ParentRegisterScreen> createState() => _ParentRegisterScreenState();
@@ -22,6 +30,22 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isGoogleLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialEmail != null && widget.initialEmail!.trim().isNotEmpty) {
+      _emailController.text = widget.initialEmail!.trim();
+    }
+    if (widget.initialName != null && widget.initialName!.trim().isNotEmpty) {
+      _nameController.text = widget.initialName!.trim();
+      final parts = widget.initialName!.trim().split(' ');
+      if (parts.isNotEmpty) {
+        _familyNameController.text = 'عائلة ';
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -68,6 +92,52 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
     }
   }
 
+  Future<void> _handleGoogleRegister() async {
+    final auth = Provider.of<AuthState>(context, listen: false);
+    setState(() => _isGoogleLoading = true);
+
+    try {
+      final success = await auth.loginWithGoogle(createIfMissing: true);
+      if (!mounted) return;
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم إنشاء الحساب بنجاح عبر Google! مرحباً بك في FinFamily 🎉'),
+            backgroundColor: AppTheme.emerald,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const ParentNavShell()),
+          (route) => false,
+        );
+      } else if (auth.errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(auth.errorMessage!),
+            backgroundColor: AppTheme.coral,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تعذر إتمام التسجيل عبر Google: '),
+          backgroundColor: AppTheme.coral,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isGoogleLoading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthState>(context);
@@ -98,7 +168,46 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
                   'سجل حسابك كولي أمر لتحصل على كود عائلي يربط جميع أطفالك',
                   style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 20),
+
+                if (widget.initialEmail != null && widget.initialEmail!.trim().isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F4F8),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.navy.withOpacity(0.18)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.info_outline, color: AppTheme.navy, size: 22),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'هذا الحساب غير مسجل بعد في FinFamily',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.navy,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'تم تعبئة بريدك الإلكتروني (). أكمل البيانات لإنشاء عائلتك، أو اختر التسجيل السريع بنقرة واحدة أدناه.',
+                                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.4),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
 
                 CustomTextField(
                   controller: _nameController,
@@ -175,12 +284,70 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
 
                 CustomButton(
                   text: 'إنشاء الحساب العائلي',
-                  isLoading: auth.status == AuthStatus.loading,
+                  isLoading: auth.status == AuthStatus.loading && !_isGoogleLoading,
                   onPressed: _handleRegister,
+                ),
+                const SizedBox(height: 18),
+
+                Row(
+                  children: const [
+                    Expanded(child: Divider()),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'أو',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider()),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                OutlinedButton(
+                  onPressed: _isGoogleLoading ? null : _handleGoogleRegister,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: BorderSide(
+                      color: Colors.grey.shade300,
+                      width: 1.2,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    backgroundColor: Colors.white,
+                  ),
+                  child: _isGoogleLoading
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.navy),
+                          ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            GoogleIconWidget(size: 20),
+                            SizedBox(width: 10),
+                            Text(
+                              'تسجيل حساب عائلي عبر Google',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF3C4043),
+                              ),
+                            ),
+                          ],
+                        ),
                 ),
                 const SizedBox(height: 16),
 

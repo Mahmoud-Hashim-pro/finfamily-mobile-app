@@ -19,6 +19,9 @@ class AuthState extends ChangeNotifier {
   String? _errorMessage;
   String? _tempLoginToken;
   String? _pendingParentEmail;
+  String? _pendingGoogleEmail;
+  String? _pendingGoogleName;
+  bool _isGoogleAccountUnregistered = false;
 
   // Liveness / readiness synchronization for splash screen and route guards
   final Completer<void> _authInitCompleter = Completer<void>();
@@ -30,6 +33,9 @@ class AuthState extends ChangeNotifier {
   Map<String, dynamic>? get user => _user;
   String? get errorMessage => _errorMessage;
   String? get pendingParentEmail => _pendingParentEmail;
+  String? get pendingGoogleEmail => _pendingGoogleEmail;
+  String? get pendingGoogleName => _pendingGoogleName;
+  bool get isGoogleAccountUnregistered => _isGoogleAccountUnregistered;
   String? get tempLoginToken => _tempLoginToken;
   bool get isParent => _role == 'parent';
   bool get isChild => _role == 'child';
@@ -60,6 +66,9 @@ class AuthState extends ChangeNotifier {
       _isServerVerified = false;
       _tempLoginToken = null;
       _pendingParentEmail = null;
+      _pendingGoogleEmail = null;
+      _pendingGoogleName = null;
+      _isGoogleAccountUnregistered = false;
       notifyListeners();
     };
     checkAuth();
@@ -209,9 +218,10 @@ class AuthState extends ChangeNotifier {
   }
 
   // Genuine Google / Gmail Sign-in with cryptographically verified ID Token
-  Future<bool> loginWithGoogle({String? manualIdToken}) async {
+  Future<bool> loginWithGoogle({String? manualIdToken, bool createIfMissing = false}) async {
     _status = AuthStatus.loading;
     _errorMessage = null;
+    _isGoogleAccountUnregistered = false;
     notifyListeners();
 
     try {
@@ -224,12 +234,21 @@ class AuthState extends ChangeNotifier {
               ? ApiConfig.googleServerClientId
               : null,
         );
+
+        // Force Google account chooser dialog every time by signing out any cached local session
+        try {
+          await googleSignIn.signOut();
+        } catch (_) {}
+
         final GoogleSignInAccount? account = await googleSignIn.signIn();
         if (account == null) {
           _status = AuthStatus.unauthenticated;
           notifyListeners();
           return false; // User cancelled flow
         }
+
+        _pendingGoogleEmail = account.email;
+        _pendingGoogleName = account.displayName;
 
         final GoogleSignInAuthentication authAuth = await account.authentication;
         idToken = authAuth.idToken;
@@ -243,6 +262,7 @@ class AuthState extends ChangeNotifier {
         ApiConfig.googleLogin,
         data: {
           'id_token': idToken,
+          'create_if_missing': createIfMissing,
         },
       );
 
@@ -263,6 +283,7 @@ class AuthState extends ChangeNotifier {
 
       _tempLoginToken = null;
       _pendingParentEmail = null;
+      _isGoogleAccountUnregistered = false;
       _role = 'parent';
 
       if (data['user'] != null && data['user'] is Map) {
@@ -282,7 +303,17 @@ class AuthState extends ChangeNotifier {
       await checkAuth();
       return true;
     } catch (e) {
-      _errorMessage = ApiErrorHandler.getErrorMessage(e);
+      if (e is DioException && e.response?.statusCode == 404) {
+        _isGoogleAccountUnregistered = true;
+        final resData = e.response?.data;
+        if (resData is Map && resData['detail'] != null) {
+          _errorMessage = resData['detail'].toString();
+        } else {
+          _errorMessage = 'هذا الحساب غير مسجل بعد في FinFamily. يرجى إنشاء حساب جديد.';
+        }
+      } else {
+        _errorMessage = ApiErrorHandler.getErrorMessage(e);
+      }
       _status = AuthStatus.unauthenticated;
       notifyListeners();
       return false;
@@ -332,6 +363,9 @@ class AuthState extends ChangeNotifier {
   void cancelMfa() {
     _tempLoginToken = null;
     _pendingParentEmail = null;
+    _pendingGoogleEmail = null;
+    _pendingGoogleName = null;
+    _isGoogleAccountUnregistered = false;
     _status = AuthStatus.unauthenticated;
     _errorMessage = null;
     notifyListeners();
