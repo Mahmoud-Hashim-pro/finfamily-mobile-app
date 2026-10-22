@@ -49,9 +49,10 @@ android {
     }
     def hasReleaseKeystore = keystorePath != null && file(keystorePath).exists()
 
-    def isCi = "true".equalsIgnoreCase(System.getenv("CI")) || "true".equalsIgnoreCase(System.getenv("REQUIRE_RELEASE_SIGNING"))
-    if (isCi && !hasReleaseKeystore) {
-        throw new GradleException("Production release keystore is missing! CI and production release builds must be signed with a valid production keystore.")
+    def isReleaseTask = gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") }
+    def requireSigning = "true".equalsIgnoreCase(System.getenv("REQUIRE_RELEASE_SIGNING")) || (isReleaseTask && "true".equalsIgnoreCase(System.getenv("CI")))
+    if (requireSigning && !hasReleaseKeystore) {
+        throw new GradleException("Production release keystore is missing! Production release builds must be signed with a valid production keystore.")
     }
 
     signingConfigs {
