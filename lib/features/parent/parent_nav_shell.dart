@@ -17,6 +17,10 @@ class ParentNavShell extends StatefulWidget {
 class _ParentNavShellState extends State<ParentNavShell> {
   int _currentIndex = 0;
   final ValueNotifier<int> _dashboardRefreshSignal = ValueNotifier(0);
+  // The other tabs also live in the IndexedStack (initState runs once), so each gets its own reload signal
+  final ValueNotifier<int> _allowanceRefreshSignal = ValueNotifier(0);
+  final ValueNotifier<int> _approvalsRefreshSignal = ValueNotifier(0);
+  final ValueNotifier<int> _familyRefreshSignal = ValueNotifier(0);
 
   @override
   void initState() {
@@ -29,6 +33,9 @@ class _ParentNavShellState extends State<ParentNavShell> {
   @override
   void dispose() {
     _dashboardRefreshSignal.dispose();
+    _allowanceRefreshSignal.dispose();
+    _approvalsRefreshSignal.dispose();
+    _familyRefreshSignal.dispose();
     super.dispose();
   }
 
@@ -39,10 +46,10 @@ class _ParentNavShellState extends State<ParentNavShell> {
         index: _currentIndex,
         children: [
           ParentDashboardScreen(refreshSignal: _dashboardRefreshSignal),
-          const AllowanceScreen(),
-          const ApprovalsScreen(),
+          AllowanceScreen(refreshSignal: _allowanceRefreshSignal),
+          ApprovalsScreen(refreshSignal: _approvalsRefreshSignal),
           const ParentCoachScreen(),
-          const FamilyMembersScreen(),
+          FamilyMembersScreen(refreshSignal: _familyRefreshSignal),
         ],
       ),
       bottomNavigationBar: Container(
@@ -62,8 +69,16 @@ class _ParentNavShellState extends State<ParentNavShell> {
             child: BottomNavigationBar(
               currentIndex: _currentIndex,
               onTap: (index) {
-                if (index == 0 && _currentIndex != 0) {
-                  _dashboardRefreshSignal.value++;
+                if (index != _currentIndex) {
+                  if (index == 0) {
+                    _dashboardRefreshSignal.value++;
+                  } else if (index == 1) {
+                    _allowanceRefreshSignal.value++;
+                  } else if (index == 2) {
+                    _approvalsRefreshSignal.value++;
+                  } else if (index == 4) {
+                    _familyRefreshSignal.value++;
+                  }
                 }
                 setState(() => _currentIndex = index);
               },

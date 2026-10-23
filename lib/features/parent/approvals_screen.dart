@@ -35,10 +35,39 @@ class ApprovalItem {
     this.category,
     this.location,
   });
+
+  /// Redemption requests (missions of kind 'redemption') DEBIT the child's balance when approved.
+  bool get isRedemption => type == ApprovalType.mission && kind == 'redemption';
+
+  /// Household chores CREDIT the child's balance when approved.
+  bool get isChore => type == ApprovalType.mission && !isRedemption;
+
+  /// Missions and purchases share the list, so the key includes the type (ids may collide across tables).
+  String get actionKey => '${type.name}:$id';
+}
+
+/// Amount pill text: '+' for a chore payout (credit), '-' for a redemption (debit), plain for a card purchase.
+@visibleForTesting
+String approvalAmountLabel(ApprovalItem item) {
+  final amt = item.amount.toStringAsFixed(2);
+  if (item.isChore) return '+$amt ج.م';
+  if (item.isRedemption) return '-$amt ج.م';
+  return '$amt ج.م';
+}
+
+/// Label of the approve button for each kind of request.
+@visibleForTesting
+String approvalApproveLabel(ApprovalItem item) {
+  if (item.isChore) return 'موافقة وصرف';
+  if (item.isRedemption) return 'موافقة وخصم من الرصيد';
+  return 'موافقة على الشراء';
 }
 
 class ApprovalsScreen extends StatefulWidget {
-  const ApprovalsScreen({super.key});
+  const ApprovalsScreen({super.key, this.refreshSignal});
+
+  /// Bumped by ParentNavShell when the Approvals tab becomes active (the tab lives in an IndexedStack).
+  final ValueNotifier<int>? refreshSignal;
 
   @override
   State<ApprovalsScreen> createState() => _ApprovalsScreenState();
@@ -48,12 +77,27 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
   List<ApprovalItem> _pendingApprovals = [];
   bool _isLoading = true;
   String? _errorMessage;
+  // Set when only one of the two sources (missions / card purchases) failed to load
+  String? _partialWarning;
   String _selectedFilter = 'all'; // 'all', 'missions', 'purchases'
+  // Items with a review request in flight (keyed by ApprovalItem.actionKey) — blocks double taps
+  final Set<String> _inFlight = {};
 
   @override
   void initState() {
     super.initState();
+    widget.refreshSignal?.addListener(_handleRefresh);
     _loadApprovals();
+  }
+
+  void _handleRefresh() {
+    _loadApprovals();
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal?.removeListener(_handleRefresh);
+    super.dispose();
   }
 
   Future<void> _loadApprovals() async {
@@ -83,6 +127,8 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
       }
 
       final List<ApprovalItem> items = [];
+      Object? missionsError;
+      Object? purchasesError;
 
       // 2. Fetch submitted missions
       try {
@@ -104,14 +150,15 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                 description: m['description'] ?? '',
                 amount: rewardAmount,
                 kind: (m['kind'] ?? 'chore').toString(),
-                proofText: m['proof_text'] ?? m['proof'],
-                proofUrl: m['proof_url'],
+                proofText: (m['proof_text'] ?? m['proof'])?.toString(),
+                proofUrl: m['proof_url']?.toString(),
               ),
             );
           }
         }
       } catch (e) {
-        // If missions fail, record or continue to card purchases
+        // Keep going with card purchases, but remember the failure (never report "all reviewed" on errors)
+        missionsError = e;
       }
 
       // 3. Fetch pending card purchases
@@ -151,24 +198,42 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
           }
         }
       } catch (e) {
-        // If purchases fail, keep missions
+        // Keep the missions, but remember the failure
+        purchasesError = e;
+      }
+
+      // Both sources failed: show the error view (with retry) instead of a false "no pending requests"
+      if (missionsError != null && purchasesError != null) throw missionsError;
+
+      String? partialWarning;
+      if (missionsError != null) {
+        partialWarning = 'تعذر تحميل المهام: ${ApiErrorHandler.getErrorMessage(missionsError)}';
+      } else if (purchasesError != null) {
+        partialWarning = 'تعذر تحميل مشتريات البطاقة: ${ApiErrorHandler.getErrorMessage(purchasesError)}';
       }
 
       if (!mounted) return;
       setState(() {
         _pendingApprovals = items;
+        _partialWarning = partialWarning;
         _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
+        _partialWarning = null;
         _errorMessage = ApiErrorHandler.getErrorMessage(e);
       });
     }
   }
 
   Future<void> _handleAction(ApprovalItem item, bool isApproved) async {
+    // In-flight guard: a double tap (or Approve then Reject) must not send a second review
+    final key = item.actionKey;
+    if (_inFlight.contains(key)) return;
+    setState(() => _inFlight.add(key));
+
     try {
       if (item.type == ApprovalType.cardPurchase) {
         await ApiClient().post(
@@ -189,21 +254,22 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
 
       if (!mounted) return;
       setState(() {
-        _pendingApprovals.removeWhere((i) => i.id == item.id);
+        _pendingApprovals.removeWhere((i) => i.actionKey == key);
       });
 
+      final amountText = item.amount.toStringAsFixed(2);
       final String successMsg;
       if (item.type == ApprovalType.cardPurchase) {
         successMsg = isApproved
-            ? 'تمت الموافقة على عملية الشراء (${item.title}) بقيمة ${item.amount.toStringAsFixed(0)} ج.م 💳'
+            ? 'تمت الموافقة على عملية الشراء (${item.title}) بقيمة $amountText ج.م 💳'
             : 'تم رفض عملية الشراء (${item.title})';
-      } else if (item.kind == 'redemption') {
+      } else if (item.isRedemption) {
         successMsg = isApproved
-            ? 'تمت الموافقة على طلب استبدال المكافأة "${item.title}" بقيمة ${item.amount.toStringAsFixed(0)} ج.م 🎁'
+            ? 'تمت الموافقة على طلب استبدال المكافأة "${item.title}" وخصم $amountText ج.م من رصيد الطفل 🎁'
             : 'تم رفض طلب استبدال المكافأة "${item.title}"';
       } else {
         successMsg = isApproved
-            ? 'تمت الموافقة على إنجاز مهمة "${item.title}" وإضافة ${item.amount.toStringAsFixed(0)} ج.م للطفل! 🎉'
+            ? 'تمت الموافقة على إنجاز مهمة "${item.title}" وإضافة $amountText ج.م للطفل! 🎉'
             : 'تم رفض طلب إنجاز مهمة "${item.title}"';
       }
 
@@ -221,6 +287,12 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
           backgroundColor: AppTheme.coral,
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _inFlight.remove(key));
+      } else {
+        _inFlight.remove(key);
+      }
     }
   }
 
@@ -231,6 +303,19 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
       return _pendingApprovals.where((a) => a.type == ApprovalType.cardPurchase).toList();
     }
     return _pendingApprovals;
+  }
+
+  /// Loading / error / empty states must still be vertically scrollable so the RefreshIndicator can fire.
+  Widget _scrollableState(Widget child) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Center(child: child),
+        ),
+      ),
+    );
   }
 
   @override
@@ -307,7 +392,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                       _buildFilterChip('الكل (${_pendingApprovals.length})', 'all'),
                       const SizedBox(width: 8),
                       _buildFilterChip(
-                        'مهام منزلية (${_pendingApprovals.where((a) => a.type == ApprovalType.mission).length})',
+                        'مهام وطلبات (${_pendingApprovals.where((a) => a.type == ApprovalType.mission).length})',
                         'missions',
                       ),
                       const SizedBox(width: 8),
@@ -320,13 +405,43 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                 ),
                 const SizedBox(height: 16),
 
+                // Partial load failure: keep what loaded, but say clearly that something is missing
+                if (!_isLoading && _errorMessage == null && _partialWarning != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.coral.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.coral.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: AppTheme.coral, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _partialWarning!,
+                            style: const TextStyle(color: AppTheme.coral, fontSize: 12),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _loadApprovals,
+                          child: const Text('إعادة المحاولة', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
                 Expanded(
                   child: _isLoading
-                      ? const Center(child: CircularProgressIndicator(color: AppTheme.navy))
+                      ? _scrollableState(const CircularProgressIndicator(color: AppTheme.navy))
                       : _errorMessage != null
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                          ? _scrollableState(
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   const Icon(Icons.error_outline, color: AppTheme.coral, size: 48),
                                   const SizedBox(height: 12),
@@ -349,9 +464,9 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                               ),
                             )
                           : filteredList.isEmpty
-                              ? Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
+                              ? _scrollableState(
+                                  Column(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Container(
                                         width: 80,
@@ -365,18 +480,23 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                                         ),
                                       ),
                                       const SizedBox(height: 16),
-                                      const Text(
-                                        'رائع! لا توجد طلبات معلقة',
-                                        style: TextStyle(
+                                      Text(
+                                        _partialWarning == null
+                                            ? 'رائع! لا توجد طلبات معلقة'
+                                            : 'لا توجد طلبات أخرى ظاهرة حالياً',
+                                        style: const TextStyle(
                                           fontSize: 17,
                                           fontWeight: FontWeight.bold,
                                           color: AppTheme.navy,
                                         ),
                                       ),
                                       const SizedBox(height: 6),
-                                      const Text(
-                                        'كل طلبات ومهام أطفالك ومشترياتهم تمت مراجعتها بالكامل.',
-                                        style: TextStyle(
+                                      Text(
+                                        _partialWarning == null
+                                            ? 'كل طلبات ومهام أطفالك ومشترياتهم تمت مراجعتها بالكامل.'
+                                            : 'تعذر تحميل جزء من الطلبات، اسحب للأسفل أو اضغط إعادة المحاولة.',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
                                           fontSize: 13,
                                           color: AppTheme.textSecondary,
                                         ),
@@ -390,7 +510,10 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                                   separatorBuilder: (_, __) => const SizedBox(height: 14),
                                   itemBuilder: (context, index) {
                                     final item = filteredList[index];
-                                    final isChore = item.type == ApprovalType.mission;
+                                    // Redemptions debit the child on approval, so they must not look like chore payouts
+                                    final isChore = item.isChore;
+                                    final isRedemption = item.isRedemption;
+                                    final busy = _inFlight.contains(item.actionKey);
 
                                     return Container(
                                       padding: const EdgeInsets.all(18),
@@ -412,40 +535,53 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                                           Row(
                                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                             children: [
-                                              Row(
-                                                children: [
-                                                  Text(
-                                                    isChore ? '🧹' : '💳',
-                                                    style: const TextStyle(fontSize: 22),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Text(
-                                                    item.childName,
-                                                    style: const TextStyle(
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 14,
-                                                      color: AppTheme.navy,
+                                              Flexible(
+                                                child: Row(
+                                                  children: [
+                                                    Text(
+                                                      isRedemption ? '🎁' : (isChore ? '🧹' : '💳'),
+                                                      style: const TextStyle(fontSize: 22),
                                                     ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: isChore
-                                                          ? AppTheme.gold.withOpacity(0.2)
-                                                          : AppTheme.navy.withOpacity(0.1),
-                                                      borderRadius: BorderRadius.circular(6),
-                                                    ),
-                                                    child: Text(
-                                                      isChore ? 'مهمة منزلية' : 'مشتريات كارت',
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        fontWeight: FontWeight.bold,
-                                                        color: isChore ? Colors.orange.shade800 : AppTheme.navy,
+                                                    const SizedBox(width: 8),
+                                                    Flexible(
+                                                      child: Text(
+                                                        item.childName,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: const TextStyle(
+                                                          fontWeight: FontWeight.bold,
+                                                          fontSize: 14,
+                                                          color: AppTheme.navy,
+                                                        ),
                                                       ),
                                                     ),
-                                                  ),
-                                                ],
+                                                    const SizedBox(width: 8),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: isChore
+                                                            ? AppTheme.gold.withOpacity(0.2)
+                                                            : isRedemption
+                                                                ? AppTheme.coral.withOpacity(0.12)
+                                                                : AppTheme.navy.withOpacity(0.1),
+                                                        borderRadius: BorderRadius.circular(6),
+                                                      ),
+                                                      child: Text(
+                                                        isRedemption
+                                                            ? 'طلب استبدال مكافأة'
+                                                            : (isChore ? 'مهمة منزلية' : 'مشتريات كارت'),
+                                                        style: TextStyle(
+                                                          fontSize: 10,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: isChore
+                                                              ? Colors.orange.shade800
+                                                              : isRedemption
+                                                                  ? AppTheme.coral
+                                                                  : AppTheme.navy,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
                                               Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -456,9 +592,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                                                   borderRadius: BorderRadius.circular(8),
                                                 ),
                                                 child: Text(
-                                                  isChore
-                                                      ? '+${item.amount.toStringAsFixed(0)} ج.م'
-                                                      : '${item.amount.toStringAsFixed(0)} ج.م',
+                                                  approvalAmountLabel(item),
                                                   style: TextStyle(
                                                     fontWeight: FontWeight.w900,
                                                     fontSize: 13,
@@ -486,7 +620,19 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                                               ),
                                             ),
                                           ],
-                                          if (item.proofText != null && item.proofText!.isNotEmpty) ...[
+                                          if (isRedemption) ...[
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'عند الموافقة سيتم خصم ${item.amount.toStringAsFixed(2)} ج.م من رصيد الطفل',
+                                              style: const TextStyle(
+                                                color: AppTheme.coral,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                          if ((item.proofText != null && item.proofText!.isNotEmpty) ||
+                                              (item.proofUrl != null && item.proofUrl!.isNotEmpty)) ...[
                                             const SizedBox(height: 8),
                                             Container(
                                               width: double.infinity,
@@ -502,13 +648,28 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                                                   const Icon(Icons.check_circle_outline, size: 16, color: AppTheme.emerald),
                                                   const SizedBox(width: 6),
                                                   Expanded(
-                                                    child: Text(
-                                                      'إثبات الطفل: ${item.proofText!}',
-                                                      style: const TextStyle(
-                                                        fontSize: 11,
-                                                        color: AppTheme.navy,
-                                                        fontWeight: FontWeight.w500,
-                                                      ),
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        if (item.proofText != null && item.proofText!.isNotEmpty)
+                                                          Text(
+                                                            'إثبات الطفل: ${item.proofText!}',
+                                                            style: const TextStyle(
+                                                              fontSize: 11,
+                                                              color: AppTheme.navy,
+                                                              fontWeight: FontWeight.w500,
+                                                            ),
+                                                          ),
+                                                        if (item.proofUrl != null && item.proofUrl!.isNotEmpty)
+                                                          SelectableText(
+                                                            'رابط الإثبات: ${item.proofUrl!}',
+                                                            style: const TextStyle(
+                                                              fontSize: 11,
+                                                              color: AppTheme.navy,
+                                                              fontWeight: FontWeight.w500,
+                                                            ),
+                                                          ),
+                                                      ],
                                                     ),
                                                   ),
                                                 ],
@@ -520,7 +681,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                                             children: [
                                               Expanded(
                                                 child: OutlinedButton.icon(
-                                                  onPressed: () => _handleAction(item, false),
+                                                  onPressed: busy ? null : () => _handleAction(item, false),
                                                   style: OutlinedButton.styleFrom(
                                                     foregroundColor: AppTheme.coral,
                                                     side: const BorderSide(color: AppTheme.coral),
@@ -535,16 +696,22 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                                               const SizedBox(width: 12),
                                               Expanded(
                                                 child: ElevatedButton.icon(
-                                                  onPressed: () => _handleAction(item, true),
+                                                  onPressed: busy ? null : () => _handleAction(item, true),
                                                   style: ElevatedButton.styleFrom(
-                                                    backgroundColor: AppTheme.emerald,
+                                                    backgroundColor: isRedemption ? AppTheme.coral : AppTheme.emerald,
                                                     foregroundColor: Colors.white,
                                                     shape: RoundedRectangleBorder(
                                                       borderRadius: BorderRadius.circular(12),
                                                     ),
                                                   ),
-                                                  icon: const Icon(Icons.check, size: 16),
-                                                  label: Text(isChore ? 'موافقة وصرف' : 'موافقة على الشراء'),
+                                                  icon: busy
+                                                      ? const SizedBox(
+                                                          width: 16,
+                                                          height: 16,
+                                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                                        )
+                                                      : const Icon(Icons.check, size: 16),
+                                                  label: Text(approvalApproveLabel(item)),
                                                 ),
                                               ),
                                             ],

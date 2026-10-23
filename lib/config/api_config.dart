@@ -15,9 +15,11 @@ class ApiConfig {
     defaultValue: '53561071157-bf7r6nmn7111sgk5174gtgfunr260i06.apps.googleusercontent.com',
   );
 
-  // App Version & Release Configuration (FF-05 & FF-31: Single Source of Truth)
-  static const String currentAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.1.4');
-  static const int currentAppBuildNumber = int.fromEnvironment('APP_BUILD_NUMBER', defaultValue: 12);
+  // App Version & Release Configuration (FF-05 & FF-31)
+  // Release CI passes --dart-define=APP_VERSION/APP_BUILD_NUMBER from pubspec.yaml.
+  // These defaults MUST be bumped together with pubspec.yaml `version:` (CI and tests fail on drift).
+  static const String currentAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.1.5');
+  static const int currentAppBuildNumber = int.fromEnvironment('APP_BUILD_NUMBER', defaultValue: 13);
 
   // Auth endpoints
   static const String parentRegister = '/auth/register';
@@ -75,6 +77,7 @@ class ApiConfig {
   static const String adminDbHealth = '/admin/database/health';
   static const String adminSecurityAlerts = '/admin/security/alerts';
   static const String adminLogin = '/admin/auth/login';
+  static const String adminMfaVerify = '/admin/auth/mfa/verify';
 
   // Dynamic route helpers
   static String missionSubmit(String id) => '/missions/$id/submit';

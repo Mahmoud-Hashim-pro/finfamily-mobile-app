@@ -9,8 +9,19 @@ import '../../core/error_handler.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 
+/// Normalizes a child PIN typed by the parent (Arabic-Indic / Persian digits → ASCII).
+/// Returns the 6 ASCII digits, or null when the input is not a 6-digit PIN.
+@visibleForTesting
+String? normalizeChildPin(String raw) {
+  final pin = normalizeArabicDigits(raw.trim());
+  return RegExp(r'^\d{6}$').hasMatch(pin) ? pin : null;
+}
+
 class FamilyMembersScreen extends StatefulWidget {
-  const FamilyMembersScreen({super.key});
+  const FamilyMembersScreen({super.key, this.refreshSignal});
+
+  /// Bumped by ParentNavShell when the Family tab becomes active (the tab lives in an IndexedStack).
+  final ValueNotifier<int>? refreshSignal;
 
   @override
   State<FamilyMembersScreen> createState() => _FamilyMembersScreenState();
@@ -26,7 +37,18 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   @override
   void initState() {
     super.initState();
+    widget.refreshSignal?.addListener(_handleRefresh);
     _loadData();
+  }
+
+  void _handleRefresh() {
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal?.removeListener(_handleRefresh);
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -38,7 +60,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
 
     try {
       final codeRes = await ApiClient().get(ApiConfig.familyCode);
-      final childrenRes = await ApiClient().get(ApiConfig.familyChildren);
+      // /family/overview (parent-only) carries each child's real card_number and avatar
+      final childrenRes = await ApiClient().get(ApiConfig.familyOverview);
 
       if (!mounted) return;
       setState(() {
@@ -66,148 +89,167 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      // Drag-to-dismiss pops the sheet directly (PopScope cannot block it); back and barrier taps
+      // are blocked by the PopScope below only while the request is in flight
+      enableDrag: false,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'إضافة بطل مالي جديد 🧒',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.navy,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'سيتم إنشاء حساب للطفل وتوليد كارت ميزة افتراضي له فوراً',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              if (dialogError != null)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppTheme.coral.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
+        builder: (ctx, setModalState) => PopScope(
+          canPop: !isSubmitting,
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            ),
+            // Scrolls on small phones when the keyboard is open, so the create button stays reachable
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'إضافة بطل مالي جديد 🧒',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.navy,
+                    ),
                   ),
-                  child: Text(
-                    dialogError!,
-                    style: const TextStyle(color: AppTheme.coral, fontSize: 12),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'سيتم إنشاء حساب للطفل وتوليد كارت ميزة افتراضي له فوراً',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                   ),
-                ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: ['👦', '👧', '🦁', '🚀', '⭐'].map((emoji) {
-                  final isSelected = selectedAvatar == emoji;
-                  return GestureDetector(
-                    onTap: () => setModalState(() => selectedAvatar = emoji),
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                  const SizedBox(height: 16),
+                  if (dialogError != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppTheme.emerald.withOpacity(0.2)
-                            : Colors.grey.shade100,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isSelected
-                              ? AppTheme.emerald
-                              : Colors.transparent,
-                          width: 2,
-                        ),
+                        color: AppTheme.coral.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Text(emoji, style: const TextStyle(fontSize: 26)),
+                      child: Text(
+                        dialogError!,
+                        style: const TextStyle(color: AppTheme.coral, fontSize: 12),
+                      ),
                     ),
-                  );
-                }).toList(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: ['👦', '👧', '🦁', '🚀', '⭐'].map((emoji) {
+                      final isSelected = selectedAvatar == emoji;
+                      return GestureDetector(
+                        onTap: () => setModalState(() => selectedAvatar = emoji),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 6),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppTheme.emerald.withOpacity(0.2)
+                                : Colors.grey.shade100,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isSelected
+                                  ? AppTheme.emerald
+                                  : Colors.transparent,
+                              width: 2,
+                            ),
+                          ),
+                          child: Text(emoji, style: const TextStyle(fontSize: 26)),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  CustomTextField(
+                    controller: nameController,
+                    label: 'اسم الطفل بالكامل',
+                    hint: 'مثلاً: عمر أحمد',
+                  ),
+                  const SizedBox(height: 12),
+                  CustomTextField(
+                    controller: pinController,
+                    label: 'رمز PIN الخاص به (6 أرقام)',
+                    hint: '123456',
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                  ),
+                  const SizedBox(height: 24),
+                  CustomButton(
+                    text: 'إنشاء حساب الطفل والكارت',
+                    backgroundColor: AppTheme.emerald,
+                    isLoading: isSubmitting,
+                    onPressed: () async {
+                      final name = nameController.text.trim();
+                      // Arabic-Indic digits are accepted and sent as ASCII (C6)
+                      final pin = normalizeChildPin(pinController.text);
+
+                      if (name.isEmpty) {
+                        setModalState(() => dialogError = 'يرجى إدخال اسم الطفل');
+                        return;
+                      }
+                      if (pin == null) {
+                        setModalState(() =>
+                            dialogError = 'رمز الـ PIN يجب أن يتكون من 6 أرقام');
+                        return;
+                      }
+
+                      setModalState(() {
+                        isSubmitting = true;
+                        dialogError = null;
+                      });
+
+                      try {
+                        await ApiClient().post(
+                          ApiConfig.createChild,
+                          data: {
+                            'full_name': name,
+                            'pin': pin,
+                            'avatar': selectedAvatar,
+                          },
+                        );
+
+                        // The child now exists: feedback and refresh come from this screen's State,
+                        // even if the sheet is no longer on screen
+                        if (ctx.mounted) Navigator.pop(ctx);
+
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content:
+                                Text('تم تسجيل $name وتوليد كارت ميزة بنجاح! 💳'),
+                            backgroundColor: AppTheme.emerald,
+                          ),
+                        );
+
+                        _loadData();
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          setModalState(() {
+                            isSubmitting = false;
+                            dialogError = ApiErrorHandler.getErrorMessage(e);
+                          });
+                        } else if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(ApiErrorHandler.getErrorMessage(e)),
+                              backgroundColor: AppTheme.coral,
+                            ),
+                          );
+                          _loadData(); // a timeout may still have created the child server-side
+                        }
+                      }
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              CustomTextField(
-                controller: nameController,
-                label: 'اسم الطفل بالكامل',
-                hint: 'مثلاً: عمر أحمد',
-              ),
-              const SizedBox(height: 12),
-              CustomTextField(
-                controller: pinController,
-                label: 'رمز PIN الخاص به (6 أرقام)',
-                hint: '123456',
-                keyboardType: TextInputType.number,
-                obscureText: true,
-              ),
-              const SizedBox(height: 24),
-              CustomButton(
-                text: 'إنشاء حساب الطفل والكارت',
-                backgroundColor: AppTheme.emerald,
-                isLoading: isSubmitting,
-                onPressed: () async {
-                  final name = nameController.text.trim();
-                  final pin = pinController.text.trim();
-
-                  if (name.isEmpty) {
-                    setModalState(() => dialogError = 'يرجى إدخال اسم الطفل');
-                    return;
-                  }
-                  if (pin.length != 6 || int.tryParse(pin) == null) {
-                    setModalState(() =>
-                        dialogError = 'رمز الـ PIN يجب أن يتكون من 6 أرقام');
-                    return;
-                  }
-
-                  setModalState(() {
-                    isSubmitting = true;
-                    dialogError = null;
-                  });
-
-                  try {
-                    await ApiClient().post(
-                      ApiConfig.createChild,
-                      data: {
-                        'full_name': name,
-                        'pin': pin,
-                        'avatar': selectedAvatar,
-                      },
-                    );
-
-                    nameController.dispose();
-                    pinController.dispose();
-
-                    if (!ctx.mounted) return;
-                    Navigator.pop(ctx);
-
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content:
-                            Text('تم تسجيل $name وتوليد كارت ميزة بنجاح! 💳'),
-                        backgroundColor: AppTheme.emerald,
-                      ),
-                    );
-
-                    _loadData();
-                  } catch (e) {
-                    setModalState(() {
-                      isSubmitting = false;
-                      dialogError = ApiErrorHandler.getErrorMessage(e);
-                    });
-                  }
-                },
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -436,13 +478,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                     separatorBuilder: (_, __) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final c = _children[index];
-                      final last4 = c['id'] != null
-                          ? (c['id'].toString().length >= 4
-                              ? c['id']
-                                  .toString()
-                                  .substring(c['id'].toString().length - 4)
-                              : '0000')
-                          : '0000';
+                      // The real (masked) card number from the child's wallet — never derived from the id
+                      final cardNumber = c['card_number']?.toString() ?? '';
 
                       return Container(
                         padding: const EdgeInsets.all(16),
@@ -457,7 +494,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                               radius: 24,
                               backgroundColor:
                                   AppTheme.emerald.withOpacity(0.12),
-                              child: Text(c['avatar'] ?? '👦',
+                              child: Text((c['avatar'] ?? c['avatar_url'] ?? '👦').toString(),
                                   style: const TextStyle(fontSize: 26)),
                             ),
                             const SizedBox(width: 14),
@@ -480,15 +517,17 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                                       color: AppTheme.textSecondary,
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '5061 •••• •••• $last4',
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: AppTheme.textMuted,
-                                      fontFamily: 'monospace',
+                                  if (cardNumber.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      cardNumber,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: AppTheme.textMuted,
+                                        fontFamily: 'monospace',
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ],
                               ),
                             ),

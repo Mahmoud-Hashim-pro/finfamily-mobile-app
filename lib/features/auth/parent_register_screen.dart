@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/auth_state.dart';
+import '../../core/error_handler.dart';
 import '../../config/theme.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/google_icon_widget.dart';
 import '../parent/parent_nav_shell.dart';
+import 'mfa_screen.dart';
 
 class ParentRegisterScreen extends StatefulWidget {
   final String? initialEmail;
@@ -40,9 +42,10 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
     }
     if (widget.initialName != null && widget.initialName!.trim().isNotEmpty) {
       _nameController.text = widget.initialName!.trim();
-      final parts = widget.initialName!.trim().split(' ');
+      // Prefill the family name from the surname (split on any whitespace run so no empty last part)
+      final parts = widget.initialName!.trim().split(RegExp(r'\s+'));
       if (parts.isNotEmpty) {
-        _familyNameController.text = 'عائلة ';
+        _familyNameController.text = 'عائلة ${parts.last}';
       }
     }
   }
@@ -97,10 +100,20 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
     setState(() => _isGoogleLoading = true);
 
     try {
-      final success = await auth.loginWithGoogle(createIfMissing: true);
+      // Use the family name shown in the form (prefilled from the Google surname) for the new family
+      final success = await auth.loginWithGoogle(
+        createIfMissing: true,
+        familyName: _familyNameController.text,
+      );
       if (!mounted) return;
 
-      if (success) {
+      if (auth.status == AuthStatus.requiresMfa) {
+        // Existing parent with MFA enabled (no account was created): complete the MFA challenge
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const MfaScreen()),
+        );
+      } else if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('تم إنشاء الحساب بنجاح عبر Google! مرحباً بك في FinFamily 🎉'),
@@ -126,7 +139,7 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('تعذر إتمام التسجيل عبر Google: '),
+          content: Text('تعذر إتمام التسجيل عبر Google: ${ApiErrorHandler.getErrorMessage(e)}'),
           backgroundColor: AppTheme.coral,
           behavior: SnackBarBehavior.floating,
         ),
@@ -197,7 +210,7 @@ class _ParentRegisterScreenState extends State<ParentRegisterScreen> {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                'تم تعبئة بريدك الإلكتروني (). أكمل البيانات لإنشاء عائلتك، أو اختر التسجيل السريع بنقرة واحدة أدناه.',
+                                'تم تعبئة بريدك الإلكتروني (${widget.initialEmail!.trim()}). أكمل البيانات لإنشاء عائلتك، أو اختر التسجيل السريع بنقرة واحدة أدناه.',
                                 style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.4),
                               ),
                             ],

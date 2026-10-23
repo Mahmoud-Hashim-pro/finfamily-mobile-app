@@ -3,12 +3,36 @@ import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../core/auth_state.dart';
 import '../../core/api_client.dart';
+import '../../core/date_utils.dart';
 import '../../core/error_handler.dart';
 import '../../models/card_model.dart';
 import '../../widgets/meeza_card_widget.dart';
 
+/// Today's spending counted the way the backend enforces daily_limit (_debit_spend_since):
+/// debit transactions of type card_purchase or redemption since the start of the local day.
+/// Server timestamps are naive UTC, so they go through parseServerDateTime (→ local time).
+@visibleForTesting
+double computeTodaySpent(List<dynamic> transactions, {DateTime? now}) {
+  final localNow = (now ?? DateTime.now()).toLocal();
+  final todayStart = DateTime(localNow.year, localNow.month, localNow.day);
+  double total = 0.0;
+  for (final t in transactions) {
+    if (t is! Map) continue;
+    if (t['direction'] != 'debit') continue;
+    if (t['type'] != 'card_purchase' && t['type'] != 'redemption') continue;
+    final dt = parseServerDateTime(t['created_date']);
+    if (dt != null && !dt.isBefore(todayStart)) {
+      total += ((t['amount'] as num?)?.toDouble() ?? 0.0);
+    }
+  }
+  return total;
+}
+
 class MeezaCardScreen extends StatefulWidget {
-  const MeezaCardScreen({super.key});
+  const MeezaCardScreen({super.key, this.refreshSignal});
+
+  /// Bumped by ChildNavShell when this tab is reopened, so the IndexedStack tab refetches.
+  final ValueNotifier<int>? refreshSignal;
 
   @override
   State<MeezaCardScreen> createState() => _MeezaCardScreenState();
@@ -18,13 +42,28 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
   bool _isLoading = true;
   String? _errorMessage;
   double? _dailyLimit;
+  // Server-computed spend for the limit window, when the backend provides it
+  double? _dailySpent;
   List<dynamic> _transactions = [];
+  // /transactions/mine failed on the last load (the list / today's spend may be stale)
+  bool _txLoadFailed = false;
 
   CardModel? _card;
 
   @override
   void initState() {
     super.initState();
+    widget.refreshSignal?.addListener(_handleRefresh);
+    _loadCardData();
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal?.removeListener(_handleRefresh);
+    super.dispose();
+  }
+
+  void _handleRefresh() {
     _loadCardData();
   }
 
@@ -40,8 +79,8 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
       final walletRes = await ApiClient().get('/wallet/me');
       final data = walletRes.data;
 
-      // Load child transactions
-      List<dynamic> txList = [];
+      // Load child transactions (null = request failed, keep the previously loaded list)
+      List<dynamic>? txList;
       try {
         final txRes = await ApiClient().get('/transactions/mine');
         txList = (txRes.data as List?) ?? [];
@@ -50,6 +89,7 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
       if (!mounted) return;
       setState(() {
         _dailyLimit = (data['daily_limit'] as num?)?.toDouble();
+        _dailySpent = (data['daily_spent'] as num?)?.toDouble();
         _card = CardModel(
           id: data['id']?.toString() ?? '',
           userId: data['owner_id']?.toString() ?? auth.user?['id']?.toString() ?? '',
@@ -58,7 +98,8 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
           status: data['card_status']?.toString() ?? 'active',
           expiryDate: data['card_expiry']?.toString() ?? data['expiry_date']?.toString(),
         );
-        _transactions = txList;
+        if (txList != null) _transactions = txList;
+        _txLoadFailed = txList == null;
         _isLoading = false;
         _errorMessage = null;
       });
@@ -71,23 +112,7 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
     }
   }
 
-  double _getTodaySpent() {
-    final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day);
-    double total = 0.0;
-    for (var t in _transactions) {
-      if (t['direction'] == 'debit' && (t['type'] == 'card_purchase' || t['type'] == 'debit')) {
-        DateTime? dt;
-        if (t['created_date'] != null) {
-          dt = DateTime.tryParse(t['created_date'].toString());
-        }
-        if (dt != null && dt.isAfter(todayStart)) {
-          total += ((t['amount'] as num?)?.toDouble() ?? 0.0);
-        }
-      }
-    }
-    return total;
-  }
+  double _getTodaySpent() => _dailySpent ?? computeTodaySpent(_transactions);
 
   String _getTransactionTypeLabel(Map<String, dynamic> t, bool isCredit) {
     final type = (t['type'] ?? '').toString();
@@ -231,6 +256,8 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                     builder: (context) {
                       final todaySpent = _getTodaySpent();
                       final double ratio = (todaySpent / _dailyLimit!).clamp(0.0, 1.0);
+                      // Without today's transactions (and no server figure) the usage would be a guess
+                      final bool usageUnknown = _txLoadFailed && _dailySpent == null;
                       return Container(
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
@@ -253,7 +280,9 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                                   ),
                                 ),
                                 Text(
-                                  '${todaySpent.toStringAsFixed(1)} / ${_dailyLimit!.toStringAsFixed(0)} ج.م',
+                                  usageUnknown
+                                      ? '? / ${_dailyLimit!.toStringAsFixed(2)} ج.م'
+                                      : '${todaySpent.toStringAsFixed(2)} / ${_dailyLimit!.toStringAsFixed(2)} ج.م',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
@@ -276,13 +305,15 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              ratio >= 1.0
-                                  ? 'وصلت للحد الأقصى المسموح به لليوم! 🛑'
-                                  : 'متبقي لك اليوم: ${(_dailyLimit! - todaySpent).clamp(0.0, _dailyLimit!).toStringAsFixed(1)} ج.م 👍',
+                              usageUnknown
+                                  ? 'تعذر تحميل عمليات اليوم، اسحب للتحديث 🔄'
+                                  : ratio >= 1.0
+                                      ? 'وصلت للحد الأقصى المسموح به لليوم! 🛑'
+                                      : 'متبقي لك اليوم: ${(_dailyLimit! - todaySpent).clamp(0.0, _dailyLimit!).toStringAsFixed(2)} ج.م 👍',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: ratio >= 1.0 ? AppTheme.coral : AppTheme.textMuted,
-                                fontWeight: ratio >= 1.0 ? FontWeight.bold : FontWeight.normal,
+                                color: (ratio >= 1.0 || usageUnknown) ? AppTheme.coral : AppTheme.textMuted,
+                                fontWeight: (ratio >= 1.0 || usageUnknown) ? FontWeight.bold : FontWeight.normal,
                               ),
                             ),
                           ],
@@ -304,11 +335,57 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                 ),
                 const SizedBox(height: 12),
 
+                if (_txLoadFailed && _transactions.isNotEmpty && !_isLoading)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.coral.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'تعذر تحديث العمليات، قد تكون القائمة غير محدثة. اسحب للتحديث 🔄',
+                      style: TextStyle(fontSize: 11, color: AppTheme.coral, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+
                 if (_isLoading && _transactions.isEmpty)
                   const Center(
                     child: Padding(
                       padding: EdgeInsets.all(32),
                       child: CircularProgressIndicator(color: AppTheme.emerald),
+                    ),
+                  )
+                else if (_txLoadFailed && _transactions.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: Colors.red.shade100),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.error_outline, size: 36, color: Colors.redAccent),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'تعذر تحميل عمليات الكارت',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppTheme.navy, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          onPressed: _loadCardData,
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('إعادة المحاولة'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.emerald,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
                   )
                 else if (_transactions.isEmpty)
@@ -402,7 +479,7 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                               ],
                             ),
                             Text(
-                              '${isCredit ? "+" : "-"}${amount.toStringAsFixed(1)} ج.م',
+                              '${isCredit ? "+" : "-"}${amount.toStringAsFixed(2)} ج.م',
                               style: TextStyle(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 14,

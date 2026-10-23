@@ -1,8 +1,78 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../config/api_config.dart';
 import '../../core/api_client.dart';
+import '../../core/auth_state.dart';
+import '../../core/date_utils.dart';
 import '../../core/error_handler.dart';
+import '../auth/role_select_screen.dart';
+
+/// Display helpers for the admin dashboard, mapped to the fields /api/admin/* actually returns.
+class AdminDashboardFormat {
+  AdminDashboardFormat._();
+
+  static double? _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value.trim());
+    return null;
+  }
+
+  /// EGP amounts are always shown with exactly 2 decimals (contract C7).
+  static String egp(dynamic value) => (_toDouble(value) ?? 0.0).toStringAsFixed(2);
+
+  /// Wallet.daily_limit == null means "no daily limit" on the backend (never a 100 EGP default).
+  static String dailyLimit(dynamic value) {
+    final limit = _toDouble(value);
+    return limit == null ? 'الحد اليومي: بدون حد' : 'الحد اليومي: ${limit.toStringAsFixed(2)} ج.م';
+  }
+
+  /// Card purchases are outgoing debits: always rendered with a minus sign.
+  static String purchaseAmount(dynamic value) => '-${egp(value)} ج.م';
+
+  /// PurchaseStatus has three values: completed / pending / rejected.
+  static String purchaseStatusLabel(dynamic status) {
+    switch (status?.toString()) {
+      case 'completed':
+        return 'مكتملة ✅';
+      case 'pending':
+        return 'قيد المراجعة ⏳';
+      case 'rejected':
+        return 'مرفوضة ⛔';
+      default:
+        return status?.toString() ?? '';
+    }
+  }
+
+  static Color purchaseStatusColor(dynamic status) {
+    switch (status?.toString()) {
+      case 'completed':
+        return AppTheme.emerald;
+      case 'pending':
+        return AppTheme.gold;
+      case 'rejected':
+        return AppTheme.coral;
+      default:
+        return Colors.white54;
+    }
+  }
+
+  /// Local date (YYYY-MM-DD) of the backend's naive-UTC ISO `created_at` (empty when missing).
+  static String datePart(dynamic iso) {
+    final local = parseServerDateTime(iso);
+    if (local == null) return iso?.toString().split('T').first ?? '';
+    final mm = local.month.toString().padLeft(2, '0');
+    final dd = local.day.toString().padLeft(2, '0');
+    return '${local.year}-$mm-$dd';
+  }
+
+  /// /admin/database/health answers status/connection 'unhealthy' (latency -1) when the DB ping fails.
+  static bool isDbHealthy(Map<String, dynamic>? health) {
+    if (health == null) return false;
+    return health['connection'] == 'healthy' || (health['connection'] == null && health['status'] == 'healthy');
+  }
+}
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -19,9 +89,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
   // Overview data
   Map<String, dynamic>? _overview;
   
-  // Cards fleet data
+  // Cards fleet data (server-side search + paging; the backend caps a page at 100 wallets)
+  static const int _cardsPageSize = 100;
   List<dynamic> _cards = [];
+  int _cardsTotal = 0;
+  bool _isLoadingMoreCards = false;
   String _cardSearchQuery = '';
+  // Owned by the State so the visible text survives the refresh spinner rebuilding the tab
+  final TextEditingController _cardSearchController = TextEditingController();
+  Timer? _cardSearchDebounce;
+  int _cardsRequestId = 0;
 
   // Transactions data
   List<dynamic> _transactions = [];
@@ -39,13 +116,32 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
 
   @override
   void dispose() {
+    _cardSearchDebounce?.cancel();
+    _cardSearchController.dispose();
     _tabController.dispose();
     super.dispose();
   }
 
+  Map<String, dynamic> _cardsQuery({int offset = 0}) {
+    final search = _cardSearchQuery.trim();
+    return {
+      'limit': _cardsPageSize,
+      'offset': offset,
+      if (search.isNotEmpty) 'search': search,
+    };
+  }
+
+  int _readTotal(dynamic data, int fallback) {
+    final total = data is Map ? data['total'] : null;
+    return total is num ? total.toInt() : fallback;
+  }
+
   Future<void> _loadAllAdminData() async {
+    _cardSearchDebounce?.cancel();
+    final requestId = ++_cardsRequestId;
     setState(() {
       _isLoading = true;
+      _isLoadingMoreCards = false;
       _errorMessage = null;
     });
 
@@ -55,26 +151,70 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
       // Parallel fetch of admin data
       final results = await Future.wait([
         client.get(ApiConfig.adminOverview),
-        client.get(ApiConfig.adminCards),
+        client.get(ApiConfig.adminCards, queryParameters: _cardsQuery()),
         client.get(ApiConfig.adminTransactions),
         client.get(ApiConfig.adminDbHealth),
         client.get(ApiConfig.adminSecurityAlerts),
       ]);
 
+      if (!mounted) return;
       setState(() {
         _overview = results[0].data;
-        _cards = results[1].data['items'] ?? [];
+        if (requestId == _cardsRequestId) {
+          _cards = List<dynamic>.from(results[1].data['items'] ?? []);
+          _cardsTotal = _readTotal(results[1].data, _cards.length);
+        }
         _transactions = results[2].data['items'] ?? [];
         _dbHealth = results[3].data;
         _securityAlerts = results[4].data;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = ApiErrorHandler.getErrorMessage(e);
       });
     }
+  }
+
+  /// Reloads (or appends the next page of) the card fleet using the server-side search,
+  /// so cards beyond the first page can still be found and frozen.
+  Future<void> _loadCards({bool append = false}) async {
+    final requestId = ++_cardsRequestId;
+    if (append) setState(() => _isLoadingMoreCards = true);
+
+    try {
+      final res = await ApiClient().get(
+        ApiConfig.adminCards,
+        queryParameters: _cardsQuery(offset: append ? _cards.length : 0),
+      );
+      if (!mounted || requestId != _cardsRequestId) return;
+
+      final items = List<dynamic>.from(res.data['items'] ?? []);
+      setState(() {
+        _cards = append ? [..._cards, ...items] : items;
+        _cardsTotal = _readTotal(res.data, _cards.length);
+        _isLoadingMoreCards = false;
+      });
+    } catch (e) {
+      if (!mounted || requestId != _cardsRequestId) return;
+      setState(() => _isLoadingMoreCards = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ApiErrorHandler.getErrorMessage(e)),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
+    }
+  }
+
+  void _onCardSearchChanged(String val) {
+    setState(() => _cardSearchQuery = val);
+    _cardSearchDebounce?.cancel();
+    _cardSearchDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) _loadCards();
+    });
   }
 
   Future<void> _updateCardStatus(String walletId, String newStatus, String childName) async {
@@ -84,6 +224,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
         data: {'card_status': newStatus},
       );
 
+      if (!mounted) return;
       setState(() {
         final index = _cards.indexWhere((c) => c['wallet_id'] == walletId);
         if (index != -1) {
@@ -91,7 +232,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
         }
       });
 
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('تم تعديل حالة كارت $childName إلى $newStatus بنجاح 🛡️'),
@@ -131,6 +271,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
             icon: const Icon(Icons.refresh, color: AppTheme.gold),
             tooltip: 'تحديث البيانات الحية',
             onPressed: _loadAllAdminData,
+          ),
+          // The dashboard can be the root route (restored admin session from splash), so it needs its own exit
+          IconButton(
+            icon: const Icon(Icons.logout, color: AppTheme.coral),
+            tooltip: 'تسجيل الخروج',
+            onPressed: () async {
+              await Provider.of<AuthState>(context, listen: false).logout();
+              if (!context.mounted) return;
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const RoleSelectScreen()),
+                (route) => false,
+              );
+            },
           ),
         ],
         bottom: TabBar(
@@ -241,7 +395,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    '${liquidity['total_egp'] ?? 0.0} ج.م',
+                    '${AdminDashboardFormat.egp(liquidity['total_egp'])} ج.م',
                     style: const TextStyle(
                       color: AppTheme.gold,
                       fontSize: 28,
@@ -264,7 +418,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
                             children: [
                               const Text('المحافظ الجارية', style: TextStyle(color: Colors.white60, fontSize: 11)),
                               const SizedBox(height: 4),
-                              Text('${liquidity['wallets_balance_egp'] ?? 0.0} ج.م', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              Text('${AdminDashboardFormat.egp(liquidity['wallets_balance_egp'])} ج.م', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
@@ -282,7 +436,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
                             children: [
                               const Text('أهداف الادخار', style: TextStyle(color: Colors.white60, fontSize: 11)),
                               const SizedBox(height: 4),
-                              Text('${liquidity['savings_balance_egp'] ?? 0.0} ج.م', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              Text('${AdminDashboardFormat.egp(liquidity['savings_balance_egp'])} ج.م', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
@@ -347,14 +501,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
   // Tab 2: Cards Fleet
   // ---------------------------------------------------------------------------
   Widget _buildCardsFleetTab() {
+    // Instant local refinement while the debounced server-side search is in flight
+    final q = _cardSearchQuery.trim().toLowerCase();
     final filtered = _cards.where((c) {
-      if (_cardSearchQuery.isEmpty) return true;
-      final q = _cardSearchQuery.toLowerCase();
+      if (q.isEmpty) return true;
       final child = (c['child_name'] ?? '').toString().toLowerCase();
       final fam = (c['family_name'] ?? '').toString().toLowerCase();
       final num = (c['card_number'] ?? '').toString().toLowerCase();
       return child.contains(q) || fam.contains(q) || num.contains(q);
     }).toList();
+    final hasMoreCards = _cards.length < _cardsTotal;
 
     return RefreshIndicator(
       onRefresh: _loadAllAdminData,
@@ -365,12 +521,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: TextField(
+              controller: _cardSearchController,
               style: const TextStyle(color: Colors.white),
-              onChanged: (val) => setState(() => _cardSearchQuery = val),
+              onChanged: _onCardSearchChanged,
               decoration: InputDecoration(
                 hintText: 'ابحث باسم الطفل أو العائلة أو رقم الكارت...',
                 hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
                 prefixIcon: const Icon(Icons.search, color: AppTheme.gold),
+                suffixIcon: _cardSearchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.white54, size: 20),
+                        onPressed: () {
+                          _cardSearchController.clear();
+                          _onCardSearchChanged('');
+                        },
+                      ),
                 filled: true,
                 fillColor: const Color(0xFF131D38),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -378,13 +544,47 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
               ),
             ),
           ),
+          if (_cardsTotal > 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(
+                  'عرض ${_cards.length} من $_cardsTotal كارت',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                ),
+              ),
+            ),
           Expanded(
-            child: filtered.isEmpty
+            child: filtered.isEmpty && !hasMoreCards
                 ? const Center(child: Text('لا توجد كروت مطابقة للبحث', style: TextStyle(color: Colors.white54)))
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: filtered.length,
+                    itemCount: filtered.length + (hasMoreCards ? 1 : 0),
                     itemBuilder: (context, index) {
+                      if (index >= filtered.length) {
+                        // Footer: next page of the fleet (the backend returns at most 100 wallets per page)
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 4, bottom: 24),
+                          child: Column(
+                            children: [
+                              if (filtered.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.only(bottom: 12),
+                                  child: Text('لا توجد كروت مطابقة في الصفحات المحملة', style: TextStyle(color: Colors.white54)),
+                                ),
+                              _isLoadingMoreCards
+                                  ? const CircularProgressIndicator(color: AppTheme.gold)
+                                  : OutlinedButton.icon(
+                                      onPressed: () => _loadCards(append: true),
+                                      icon: const Icon(Icons.expand_more, color: AppTheme.gold),
+                                      label: const Text('تحميل المزيد', style: TextStyle(color: AppTheme.gold)),
+                                      style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.gold)),
+                                    ),
+                            ],
+                          ),
+                        );
+                      }
                       final card = filtered[index];
                       final status = card['card_status'] ?? 'active';
                       final isFrozen = status == 'frozen';
@@ -440,8 +640,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('الرصيد: ${card['balance'] ?? 0.0} ج.م', style: const TextStyle(color: AppTheme.gold, fontWeight: FontWeight.bold)),
-                                Text('الحد اليومي: ${card['daily_limit'] ?? 100} ج.م', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                                Text('الرصيد: ${AdminDashboardFormat.egp(card['balance'])} ج.م', style: const TextStyle(color: AppTheme.gold, fontWeight: FontWeight.bold)),
+                                // null daily_limit = no daily limit (never a 100 EGP default)
+                                Text(AdminDashboardFormat.dailyLimit(card['daily_limit']), style: const TextStyle(color: Colors.white70, fontSize: 12)),
                               ],
                             ),
                             const Divider(color: Colors.white10, height: 20),
@@ -490,8 +691,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
               itemCount: _transactions.length,
               itemBuilder: (context, index) {
                 final t = _transactions[index];
-                final amt = (t['amount_egp'] as num?)?.toDouble() ?? 0.0;
-                final isCompleted = t['status'] == 'completed';
+                // /admin/transactions items are card purchases: {merchant, category, amount, status, decline_reason, created_at}
+                final status = t['status']?.toString();
+                final merchant = (t['merchant'] ?? 'معاملة بنكية').toString();
+                final category = t['category']?.toString() ?? '';
+                final declineReason = t['decline_reason']?.toString();
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
@@ -503,15 +707,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
                   ),
                   child: Row(
                     children: [
+                      // Purchases are always outgoing debits
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: (amt > 0 ? AppTheme.emerald : AppTheme.blue).withOpacity(0.15),
+                          color: AppTheme.coral.withOpacity(0.15),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(
-                          amt > 0 ? Icons.arrow_downward : Icons.arrow_upward,
-                          color: amt > 0 ? AppTheme.emerald : AppTheme.coral,
+                        child: const Icon(
+                          Icons.arrow_upward,
+                          color: AppTheme.coral,
                           size: 20,
                         ),
                       ),
@@ -521,14 +726,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              t['merchant_or_label'] ?? 'معاملة بنكية',
+                              category.isNotEmpty ? '$merchant • $category' : merchant,
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '${t['child_name'] ?? ''} (${t['family_name'] ?? ''}) • ${t['created_at']?.toString().split('T').first ?? ''}',
+                              '${t['child_name'] ?? ''} (${t['family_name'] ?? ''}) • ${AdminDashboardFormat.datePart(t['created_at'])}',
                               style: const TextStyle(color: Colors.white54, fontSize: 11),
                             ),
+                            if (status == 'rejected' && declineReason != null && declineReason.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'سبب الرفض: $declineReason',
+                                style: const TextStyle(color: AppTheme.coral, fontSize: 11),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -536,17 +748,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '${amt > 0 ? '+' : ''}$amt ج.م',
-                            style: TextStyle(
-                              color: amt > 0 ? AppTheme.emerald : Colors.white,
+                            AdminDashboardFormat.purchaseAmount(t['amount']),
+                            style: const TextStyle(
+                              color: Colors.white,
                               fontWeight: FontWeight.w900,
                               fontFamily: 'monospace',
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            isCompleted ? 'مكتملة ✅' : 'مرفوضة ⛔',
-                            style: TextStyle(color: isCompleted ? AppTheme.emerald : AppTheme.coral, fontSize: 10),
+                            AdminDashboardFormat.purchaseStatusLabel(status),
+                            style: TextStyle(color: AdminDashboardFormat.purchaseStatusColor(status), fontSize: 10),
                           ),
                         ],
                       ),
@@ -565,6 +777,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
     final locked = (_securityAlerts?['locked_accounts'] as List<dynamic>?) ?? [];
     final alerts = (_securityAlerts?['audit_events'] as List<dynamic>?) ?? [];
     final stats = _dbHealth?['table_row_counts'] as Map<String, dynamic>? ?? {};
+    final dbHealthy = AdminDashboardFormat.isDbHealthy(_dbHealth);
+    final latency = _dbHealth?['latency_ms'];
+    final latencyText = (latency is num && latency >= 0) ? '$latency ms' : 'غير متاح';
 
     return RefreshIndicator(
       onRefresh: _loadAllAdminData,
@@ -581,21 +796,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
               decoration: BoxDecoration(
                 color: const Color(0xFF131D38),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.emerald.withOpacity(0.4)),
+                border: Border.all(color: (dbHealthy ? AppTheme.emerald : AppTheme.coral).withOpacity(0.4)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('سيرفر قاعدة البيانات (Neon DB) 🗄️', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                      Text('متصل 🟢', style: TextStyle(color: AppTheme.emerald, fontWeight: FontWeight.bold, fontSize: 12)),
+                      const Text('سيرفر قاعدة البيانات (Neon DB) 🗄️', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                      // Driven by /admin/database/health (status/connection 'unhealthy' when the ping fails)
+                      Text(
+                        dbHealthy ? 'متصل 🟢' : 'غير متصل 🔴',
+                        style: TextStyle(color: dbHealthy ? AppTheme.emerald : AppTheme.coral, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Text('المزود: ${_dbHealth?['provider'] ?? 'Neon PostgreSQL'}', style: const TextStyle(color: Colors.white60, fontSize: 12)),
-                  Text('زمن الاستجابة (Latency): ${_dbHealth?['latency_ms'] ?? 0} ms', style: const TextStyle(color: AppTheme.gold, fontSize: 12, fontWeight: FontWeight.bold)),
+                  Text('زمن الاستجابة (Latency): $latencyText', style: const TextStyle(color: AppTheme.gold, fontSize: 12, fontWeight: FontWeight.bold)),
                   const Divider(color: Colors.white10, height: 20),
                   const Text('إحصائيات الجداول المباشرة:', style: TextStyle(color: Colors.white70, fontSize: 12)),
                   const SizedBox(height: 8),
@@ -652,7 +871,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      '${a['action']} بواسطة ${a['actor_role']} • ${a['timestamp']?.toString().split('T').first ?? ''}',
+                      '${a['action']} بواسطة ${a['actor_role']} • ${AdminDashboardFormat.datePart(a['created_at'])}',
                       style: const TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                   ),

@@ -49,7 +49,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
           aiNote = 'مبروك يا بطل! حققت هدفك بالكامل وتقدر تستمتع بيه دلوقتي! 🎉';
         } else if (pct >= 0.75) {
           eta = 'خلال أسبوع تقريباً ⚡';
-          aiNote = 'قربت جداً! باقي لك ${remaining.toInt()} ج.م فقط لتحقيق الهدف!';
+          aiNote = 'قربت جداً! باقي لك ${remaining.toStringAsFixed(2)} ج.م فقط لتحقيق الهدف!';
         } else if (pct >= 0.4) {
           eta = 'خلال 2-3 أسابيع ⏳';
           aiNote = 'ماشي بخطوات ممتازة! واصل إنجاز المهام لزيادة رصيدك.';
@@ -93,7 +93,10 @@ class _GoalsScreenState extends State<GoalsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
+        builder: (ctx, setDialogState) => PopScope(
+          // No back/barrier dismissal while the deposit is in flight
+          canPop: !isDepositing,
+          child: AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Text('تحويش في "${_goals[index].name}" 🎯', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           content: Column(
@@ -136,6 +139,13 @@ class _GoalsScreenState extends State<GoalsScreen> {
                         setDialogState(() => dialogError = 'الحد الأقصى للإيداع هو 100,000 ج.م');
                         return;
                       }
+                      // Backend rejects deposits above the goal's remaining amount (compare in piastres)
+                      final goal = _goals[index];
+                      final remaining = (goal.target - goal.current).clamp(0.0, double.infinity);
+                      if ((val * 100).round() > (remaining * 100).round()) {
+                        setDialogState(() => dialogError = 'المبلغ يتجاوز المتبقي للهدف (${remaining.toStringAsFixed(2)} ج.م)');
+                        return;
+                      }
 
                       setDialogState(() {
                         isDepositing = true;
@@ -149,18 +159,26 @@ class _GoalsScreenState extends State<GoalsScreen> {
                           data: {'amount': val},
                         );
 
-                        if (!ctx.mounted) return;
-                        Navigator.pop(ctx);
+                        // Refresh the list even if the dialog was closed while the request was in flight
+                        if (ctx.mounted && (ModalRoute.of(ctx)?.isCurrent ?? false)) Navigator.pop(ctx);
+                        if (!mounted) return;
                         _loadGoals();
 
-                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('عاش يا بطل! تم تحويش $val ج.م في هدفك 🚀'),
+                            content: Text('عاش يا بطل! تم تحويش ${val.toStringAsFixed(2)} ج.م في هدفك 🚀'),
                             backgroundColor: AppTheme.emerald,
                           ),
                         );
                       } catch (e) {
+                        if (!ctx.mounted) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(ApiErrorHandler.getErrorMessage(e)), backgroundColor: AppTheme.coral),
+                            );
+                          }
+                          return;
+                        }
                         setDialogState(() {
                           isDepositing = false;
                           dialogError = ApiErrorHandler.getErrorMessage(e);
@@ -177,6 +195,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                   : const Text('إيداع'),
             ),
           ],
+          ),
         ),
       ),
     ).then((_) => amountController.dispose());
@@ -191,7 +210,10 @@ class _GoalsScreenState extends State<GoalsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
+        builder: (ctx, setDialogState) => PopScope(
+          // No back/barrier dismissal while the withdrawal is in flight
+          canPop: !isSubmitting,
+          child: AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Text('سحب من "${g.name}" ↩️', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           content: Column(
@@ -199,7 +221,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'الرصيد المتوفر في الهدف: ${g.current.toStringAsFixed(1)} ج.م',
+                'الرصيد المتوفر في الهدف: ${g.current.toStringAsFixed(2)} ج.م',
                 style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
               const SizedBox(height: 12),
@@ -232,8 +254,8 @@ class _GoalsScreenState extends State<GoalsScreen> {
                   : () async {
                       final raw = normalizeArabicDigits(amountController.text.trim());
                       final val = double.tryParse(raw) ?? 0.0;
-                      if (val <= 0 || val > g.current) {
-                        setDialogState(() => dialogError = 'يرجى إدخال مبلغ صحيح لا يتجاوز ${g.current} ج.م');
+                      if (val <= 0 || (val * 100).round() > (g.current * 100).round()) {
+                        setDialogState(() => dialogError = 'يرجى إدخال مبلغ صحيح لا يتجاوز ${g.current.toStringAsFixed(2)} ج.م');
                         return;
                       }
 
@@ -243,31 +265,34 @@ class _GoalsScreenState extends State<GoalsScreen> {
                       });
 
                       try {
-                        try {
-                          await ApiClient().post(
-                            '/wallet/me/goals/${g.id}/withdraw',
-                            data: {'amount': val},
-                          );
-                        } catch (_) {
-                          // Fallback to deposit negative amount
-                          await ApiClient().post(
-                            '/wallet/me/goals/${g.id}/deposit',
-                            data: {'amount': -val},
-                          );
-                        }
+                        // Single withdraw call: its own error (e.g. not enough savings) is what the child sees
+                        await ApiClient().post(
+                          '/wallet/me/goals/${g.id}/withdraw',
+                          data: {'amount': val},
+                        );
 
-                        if (!ctx.mounted) return;
-                        Navigator.pop(ctx);
+                        // Refresh the list even if the dialog was closed while the request was in flight
+                        if (ctx.mounted && (ModalRoute.of(ctx)?.isCurrent ?? false)) Navigator.pop(ctx);
+                        if (!mounted) return;
                         _loadGoals();
 
-                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('تم سحب $val ج.م من الهدف وإعادتها لكارت ميزة 💳'),
+                            content: Text('تم سحب ${val.toStringAsFixed(2)} ج.م من الهدف وإعادتها لكارت ميزة 💳'),
                             backgroundColor: AppTheme.navy,
                           ),
                         );
                       } catch (e) {
+                        // The goal may be stale (or a timed-out withdraw may have gone through): reload it
+                        if (mounted) _loadGoals();
+                        if (!ctx.mounted) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(ApiErrorHandler.getErrorMessage(e)), backgroundColor: AppTheme.coral),
+                            );
+                          }
+                          return;
+                        }
                         setDialogState(() {
                           isSubmitting = false;
                           dialogError = ApiErrorHandler.getErrorMessage(e);
@@ -284,6 +309,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                   : const Text('سحب للكارت'),
             ),
           ],
+          ),
         ),
       ),
     ).then((_) => amountController.dispose());
@@ -296,7 +322,10 @@ class _GoalsScreenState extends State<GoalsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
+        builder: (ctx, setDialogState) => PopScope(
+          // No back/barrier dismissal while the delete is in flight
+          canPop: !isDeleting,
+          child: AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('حذف هدف الادخار 🗑️', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           content: Text(
@@ -315,11 +344,11 @@ class _GoalsScreenState extends State<GoalsScreen> {
                       setDialogState(() => isDeleting = true);
                       try {
                         await ApiClient().delete('/wallet/me/goals/${g.id}');
-                        if (!ctx.mounted) return;
-                        Navigator.pop(ctx);
+                        // Refresh the list even if the dialog was closed while the request was in flight
+                        if (ctx.mounted && (ModalRoute.of(ctx)?.isCurrent ?? false)) Navigator.pop(ctx);
+                        if (!mounted) return;
                         _loadGoals();
 
-                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('تم حذف هدف "${g.name}" بنجاح'),
@@ -327,7 +356,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                           ),
                         );
                       } catch (e) {
-                        setDialogState(() => isDeleting = false);
+                        if (ctx.mounted) setDialogState(() => isDeleting = false);
                         if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -347,6 +376,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                   : const Text('تأكيد الحذف'),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -369,7 +399,10 @@ class _GoalsScreenState extends State<GoalsScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Padding(
+        builder: (ctx, setModalState) => PopScope(
+          // No back/barrier dismissal while the goal is being created
+          canPop: !isSubmitting,
+          child: Padding(
           padding: EdgeInsets.only(
             left: 24,
             right: 24,
@@ -393,7 +426,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.close, size: 20),
-                    onPressed: () => Navigator.pop(ctx),
+                    onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
                   ),
                 ],
               ),
@@ -479,6 +512,11 @@ class _GoalsScreenState extends State<GoalsScreen> {
                     setModalState(() => modalError = 'أدخل المبلغ المستهدف بشكل صحيح');
                     return;
                   }
+                  // Backend SavingsGoalCreate requires target >= 10
+                  if (target < 10) {
+                    setModalState(() => modalError = 'الحد الأدنى للهدف هو 10 ج.م');
+                    return;
+                  }
                   if (target > 1000000) {
                     setModalState(() => modalError = 'الحد الأقصى للهدف هو 1,000,000 ج.م');
                     return;
@@ -499,11 +537,11 @@ class _GoalsScreenState extends State<GoalsScreen> {
                       },
                     );
 
-                    if (!ctx.mounted) return;
-                    Navigator.pop(ctx);
+                    // Refresh the list even if the sheet was closed (e.g. dragged down) while the request was in flight
+                    if (ctx.mounted && (ModalRoute.of(ctx)?.isCurrent ?? false)) Navigator.pop(ctx);
+                    if (!mounted) return;
                     _loadGoals();
 
-                    if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('تم إنشاء هدف الادخار بنجاح! بالتوفيق يا بطل 🌟'),
@@ -511,6 +549,14 @@ class _GoalsScreenState extends State<GoalsScreen> {
                       ),
                     );
                   } catch (e) {
+                    if (!ctx.mounted) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(ApiErrorHandler.getErrorMessage(e)), backgroundColor: AppTheme.coral),
+                        );
+                      }
+                      return;
+                    }
                     setModalState(() {
                       isSubmitting = false;
                       modalError = ApiErrorHandler.getErrorMessage(e);
@@ -519,6 +565,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                 },
               ),
             ],
+          ),
           ),
         ),
       ),
@@ -752,7 +799,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        'تم جمع ${g.current.toStringAsFixed(1)} من ${g.target.toStringAsFixed(1)} ج.م',
+                                        'تم جمع ${g.current.toStringAsFixed(2)} من ${g.target.toStringAsFixed(2)} ج.م',
                                         style: const TextStyle(
                                           fontSize: 12,
                                           color: AppTheme.textSecondary,
@@ -848,7 +895,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                                   ),
                                 ),
                                 Text(
-                                  'المتبقي: ${(g.target - g.current).clamp(0, double.infinity).toStringAsFixed(1)} ج.م',
+                                  'المتبقي: ${(g.target - g.current).clamp(0.0, double.infinity).toStringAsFixed(2)} ج.م',
                                   style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
                                 ),
                               ],

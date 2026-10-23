@@ -8,6 +8,7 @@ import 'onboarding_screen.dart';
 import 'role_select_screen.dart';
 import '../parent/parent_nav_shell.dart';
 import '../child/child_nav_shell.dart';
+import '../admin/admin_dashboard_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -91,7 +92,12 @@ class _SplashScreenState extends State<SplashScreen>
 
     Widget nextScreen;
     if (auth.status == AuthStatus.authenticated) {
-      nextScreen = auth.isParent ? const ParentNavShell() : const ChildNavShell();
+      if (auth.role == 'admin' || auth.isSuperAdmin) {
+        // Restored admin portal session (role 'admin') must not land on the child shell
+        nextScreen = const AdminDashboardScreen();
+      } else {
+        nextScreen = auth.isParent ? const ParentNavShell() : const ChildNavShell();
+      }
     } else {
       bool onboardingDone = false;
       try {
@@ -108,8 +114,12 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (!mounted) return;
 
+    // Capture the navigator: its context outlives this splash route, which is disposed on replacement
+    final navigator = Navigator.of(context);
+    final landsOnNavShell = nextScreen is ParentNavShell || nextScreen is ChildNavShell;
+
     // Smooth cinematic fade transition into the app screen
-    Navigator.of(context).pushReplacement(
+    navigator.pushReplacement(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => nextScreen,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -120,12 +130,18 @@ class _SplashScreenState extends State<SplashScreen>
         },
         transitionDuration: const Duration(milliseconds: 700),
       ),
-    ).then((_) {
-      // Background check for updates after landing
-      if (mounted) {
-        UpdateChecker.checkForUpdates(context);
-      }
-    });
+    );
+
+    // Background check for updates after landing. The nav shells run their own post-frame check;
+    // other landing screens (Onboarding / RoleSelect / admin) don't, so run it here once the fade ends.
+    // (A `.then` on pushReplacement only fires when the new route is popped, i.e. never here.)
+    if (!landsOnNavShell) {
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (navigator.mounted) {
+          UpdateChecker.checkForUpdates(navigator.context);
+        }
+      });
+    }
   }
 
   @override

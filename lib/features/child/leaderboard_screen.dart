@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../core/auth_state.dart';
 import '../../core/api_client.dart';
+import '../../core/error_handler.dart';
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -13,6 +14,7 @@ class LeaderboardScreen extends StatefulWidget {
 
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
   bool _isLoading = true;
+  String? _errorMessage;
   List<Map<String, dynamic>> _rankings = [];
 
   @override
@@ -22,6 +24,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 
   Future<void> _loadLeaderboard() async {
+    if (mounted) {
+      setState(() {
+        _errorMessage = null;
+        if (_rankings.isEmpty) _isLoading = true;
+      });
+    }
     try {
       final auth = Provider.of<AuthState>(context, listen: false);
       final currentUserId = auth.user?['id'];
@@ -44,7 +52,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         loaded.add({
           'rank': i + 1,
           'name': isCurrent ? '${k['full_name']} (أنت)' : (k['full_name'] ?? 'بطل مالي'),
-          'avatar': i == 0 ? '👑' : (i == 1 ? '🥈' : (i == 2 ? '🥉' : '👦')),
+          'avatar': i == 0 ? '👑' : (i == 1 ? '🥈' : (i == 2 ? '🥉' : (k['avatar'] ?? k['avatar_url'] ?? '👦').toString())),
           'xp': (k['xp'] as num?)?.toInt() ?? 0,
           'level': (k['level'] as num?)?.toInt() ?? 1,
           'streak': (k['streak'] as num?)?.toInt() ?? 0,
@@ -56,11 +64,29 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       setState(() {
         _rankings = loaded;
         _isLoading = false;
+        _errorMessage = null;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      // Keep the last good list; the empty "first hero" state is only for a real empty family
+      setState(() {
+        _isLoading = false;
+        _errorMessage = ApiErrorHandler.getErrorMessage(e);
+      });
     }
+  }
+
+  /// Non-list states still need a scrollable so pull-to-refresh works.
+  Widget _scrollableCenter(Widget child) {
+    return LayoutBuilder(
+      builder: (ctx, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Center(child: child),
+        ),
+      ),
+    );
   }
 
   @override
@@ -115,15 +141,51 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 const SizedBox(height: 20),
 
                 if (_isLoading)
-                  const Expanded(
-                    child: Center(
-                      child: CircularProgressIndicator(color: AppTheme.emerald),
+                  Expanded(
+                    child: _scrollableCenter(
+                      const CircularProgressIndicator(color: AppTheme.emerald),
+                    ),
+                  )
+                else if (_errorMessage != null && _rankings.isEmpty)
+                  Expanded(
+                    child: _scrollableCenter(
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.red.shade100),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.error_outline, size: 44, color: Colors.redAccent),
+                            const SizedBox(height: 12),
+                            Text(
+                              _errorMessage!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 13, color: AppTheme.navy, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: _loadLeaderboard,
+                              icon: const Icon(Icons.refresh, size: 18),
+                              label: const Text('إعادة المحاولة'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.emerald,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   )
                 else if (_rankings.isEmpty)
                   Expanded(
-                    child: Center(
-                      child: Container(
+                    child: _scrollableCenter(
+                      Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -156,6 +218,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 else
                   Expanded(
                     child: ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       itemCount: _rankings.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {

@@ -4,6 +4,37 @@ import '../../core/api_client.dart';
 import '../../config/api_config.dart';
 import '../../core/error_handler.dart';
 
+/// Backend ChatMessage limits (services/ai_coach.py): each history item ≤ 1000 chars, total history text
+/// ≤ 4000 chars, and the model only reads the last 10 history messages (C15).
+const int _kParentCoachMaxItemChars = 1000;
+const int _kParentCoachMaxHistoryItems = 10;
+const int _kParentCoachMaxHistoryTotalChars = 4000;
+
+/// Builds the `history` payload (oldest → newest) from the chat bubbles that came BEFORE the message being sent.
+/// Client-only bubbles (the static greeting and error bubbles, marked with 'local': 'true') are never sent.
+/// Lengths are counted in code points (runes), the same way the backend's Python validator counts them.
+@visibleForTesting
+List<Map<String, String>> buildParentCoachHistory(List<Map<String, String>> messages) {
+  final turns = <Map<String, String>>[];
+  for (final m in messages) {
+    if (m['local'] == 'true') continue;
+    var text = (m['text'] ?? '').trim();
+    if (text.isEmpty) continue;
+    if (text.runes.length > _kParentCoachMaxItemChars) {
+      text = String.fromCharCodes(text.runes.take(_kParentCoachMaxItemChars));
+    }
+    turns.add({'role': m['role'] == 'user' ? 'user' : 'assistant', 'content': text});
+  }
+  final recent = turns.length > _kParentCoachMaxHistoryItems
+      ? turns.sublist(turns.length - _kParentCoachMaxHistoryItems)
+      : turns;
+  var total = recent.fold<int>(0, (s, m) => s + m['content']!.runes.length);
+  while (total > _kParentCoachMaxHistoryTotalChars && recent.isNotEmpty) {
+    total -= recent.removeAt(0)['content']!.runes.length;
+  }
+  return recent;
+}
+
 class ParentCoachScreen extends StatefulWidget {
   const ParentCoachScreen({super.key});
 
@@ -21,6 +52,7 @@ class _ParentCoachScreenState extends State<ParentCoachScreen> {
       'role': 'assistant',
       'text':
           'أهلاً بك! أنا مستشارك المالي الذكي في FinFamily 🤖. كيف أساعدك اليوم في تنظيم مصاريف عائلتك أو تعليم أولادك عادات مالية ذكية؟',
+      'local': 'true', // static greeting: not part of the conversation history sent to the coach
     },
   ];
 
@@ -39,8 +71,12 @@ class _ParentCoachScreenState extends State<ParentCoachScreen> {
 
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
+    // One request at a time: keeps replies in question order and the typing indicator accurate
+    if (_isTyping) return;
 
     if (!mounted) return;
+    // History = the conversation so far, excluding the message being sent (C15)
+    final history = buildParentCoachHistory(_messages);
     setState(() {
       _messages.add({'role': 'user', 'text': text.trim()});
       _isTyping = true;
@@ -51,7 +87,10 @@ class _ParentCoachScreenState extends State<ParentCoachScreen> {
     try {
       final res = await ApiClient().post(
         ApiConfig.aiCoach,
-        data: {'message': text.trim()},
+        data: {
+          'message': text.trim(),
+          if (history.isNotEmpty) 'history': history,
+        },
       );
       final reply = res.data['reply'] ?? res.data['response'] ?? 'أنا هنا لمساعدتك دائماً!';
       if (!mounted) return;
@@ -66,6 +105,7 @@ class _ParentCoachScreenState extends State<ParentCoachScreen> {
         _messages.add({
           'role': 'assistant',
           'text': 'تعذر الاتصال بالمستشار المالي: $errMsg. يرجى المحاولة مرة أخرى.',
+          'local': 'true', // client-side error bubble: never sent back as history
         });
         _isTyping = false;
       });
@@ -115,7 +155,7 @@ class _ParentCoachScreenState extends State<ParentCoachScreen> {
                     label: Text(prompt, style: const TextStyle(fontSize: 12)),
                     backgroundColor: Colors.white,
                     side: const BorderSide(color: AppTheme.cardBorder),
-                    onPressed: () => _sendMessage(prompt),
+                    onPressed: _isTyping ? null : () => _sendMessage(prompt),
                   );
                 },
               ),
@@ -216,7 +256,7 @@ class _ParentCoachScreenState extends State<ParentCoachScreen> {
                     backgroundColor: AppTheme.navy,
                     child: IconButton(
                       icon: const Icon(Icons.send, color: Colors.white, size: 20),
-                      onPressed: () => _sendMessage(_messageController.text),
+                      onPressed: _isTyping ? null : () => _sendMessage(_messageController.text),
                     ),
                   ),
                 ],

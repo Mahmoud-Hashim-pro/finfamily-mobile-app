@@ -67,14 +67,26 @@ class ApiClient {
             final responseData = error.response?.data;
             final detail = (responseData is Map ? responseData['detail'] : '').toString().toLowerCase();
 
-            // Operation-specific validation failures must not revoke the user's active session
+            // Operation-specific validation failures must not revoke the user's active session.
+            // C13: a Google-only parent confirming MFA settings / re-auth with the wrong Google
+            // account gets a 401 'Google authentication does not match ...' / 'Invalid Google ...
+            // re-authentication token' — that is a failed identity proof, not an expired session.
             final isOperationalFailure = detail.contains('pin') ||
                 detail.contains('password') ||
                 detail.contains('mfa') ||
                 detail.contains('recovery') ||
-                detail.contains('too many attempts');
+                detail.contains('too many attempts') ||
+                detail.contains('google') ||
+                detail.contains('re-authentication');
 
-            if (!isAuthActionEndpoint && !isOperationalFailure) {
+            // A 401 for a request sent with a credential that is no longer current
+            // (e.g. the user re-logged in while it was in flight) must not wipe the new session.
+            final sentAuth = error.requestOptions.headers['Authorization']?.toString();
+            final currentToken = await SecureStorageService().getToken();
+            final currentAuth = (currentToken != null && currentToken.isNotEmpty) ? 'Bearer $currentToken' : null;
+            final isStaleCredential = sentAuth != currentAuth;
+
+            if (!isAuthActionEndpoint && !isOperationalFailure && !isStaleCredential) {
               await SecureStorageService().clearSession();
               if (onUnauthorized != null) {
                 onUnauthorized!();

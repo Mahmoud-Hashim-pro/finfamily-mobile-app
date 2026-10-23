@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../../config/theme.dart';
 import '../../core/api_client.dart';
@@ -8,8 +9,17 @@ import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import 'family_members_screen.dart';
 
+/// A 409 from the allowance endpoint means the idempotency key was already consumed by a committed
+/// allowance (every 409 branch needs an existing IdempotencyRecord), so the key must be retired.
+@visibleForTesting
+bool isIdempotencyKeyConsumed(Object error) =>
+    error is DioException && error.response?.statusCode == 409;
+
 class AllowanceScreen extends StatefulWidget {
-  const AllowanceScreen({super.key});
+  const AllowanceScreen({super.key, this.refreshSignal});
+
+  /// Bumped by ParentNavShell when the Allowance tab becomes active (the tab lives in an IndexedStack).
+  final ValueNotifier<int>? refreshSignal;
 
   @override
   State<AllowanceScreen> createState() => _AllowanceScreenState();
@@ -28,6 +38,11 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
   @override
   void initState() {
     super.initState();
+    widget.refreshSignal?.addListener(_handleRefresh);
+    _loadChildren();
+  }
+
+  void _handleRefresh() {
     _loadChildren();
   }
 
@@ -65,6 +80,7 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
 
   @override
   void dispose() {
+    widget.refreshSignal?.removeListener(_handleRefresh);
     _amountController.dispose();
     _noteController.dispose();
     super.dispose();
@@ -129,7 +145,7 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('تم تحويل $amount ج.م بنجاح إلى المحفظة! 🎉'),
+          content: Text('تم تحويل ${amount.toStringAsFixed(2)} ج.م بنجاح إلى المحفظة! 🎉'),
           backgroundColor: AppTheme.emerald,
         ),
       );
@@ -137,13 +153,24 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
       _loadChildren();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isSending = false);
+      // 409: this key already belongs to a committed allowance (e.g. a timed-out send that succeeded).
+      // Retire it so the next send is a new operation, and reload so the parent sees the real balance.
+      final keyConsumed = isIdempotencyKeyConsumed(e);
+      setState(() {
+        _isSending = false;
+        if (keyConsumed) _currentAllowanceIdempotencyKey = null;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(ApiErrorHandler.getErrorMessage(e)),
+          content: Text(
+            keyConsumed
+                ? 'تم تنفيذ هذا التحويل مسبقاً بطلب سابق. تم تحديث الرصيد، راجعه قبل الإرسال مرة أخرى'
+                : ApiErrorHandler.getErrorMessage(e),
+          ),
           backgroundColor: AppTheme.coral,
         ),
       );
+      if (keyConsumed) _loadChildren();
     }
   }
 
@@ -156,7 +183,13 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
       ),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadChildren,
+          onRefresh: () {
+            // After a manual refresh the parent has seen the real balance, so the next send is a new operation.
+            // Never while a send is in flight: that balance may predate its commit, and retiring the key
+            // would let a retry after a lost response credit the child twice (FF-12).
+            if (!_isSending) _currentAllowanceIdempotencyKey = null;
+            return _loadChildren();
+          },
           color: AppTheme.navy,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -305,12 +338,15 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
                       final bal = (c['balance'] as num?)?.toDouble() ?? 0.0;
                       return Expanded(
                         child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _selectedChildId = childId;
-                              _currentAllowanceIdempotencyKey = null;
-                            });
-                          },
+                          // The recipient can't change mid-send: switching retires the retained key (FF-12)
+                          onTap: _isSending
+                              ? null
+                              : () {
+                                  setState(() {
+                                    _selectedChildId = childId;
+                                    _currentAllowanceIdempotencyKey = null;
+                                  });
+                                },
                           child: Container(
                             margin: const EdgeInsets.symmetric(horizontal: 4),
                             padding: const EdgeInsets.all(12),
@@ -328,7 +364,7 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
                             ),
                             child: Column(
                               children: [
-                                Text(c['avatar'] ?? '👦',
+                                Text((c['avatar'] ?? c['avatar_url'] ?? '👦').toString(),
                                     style: const TextStyle(fontSize: 28)),
                                 const SizedBox(height: 6),
                                 Text(
@@ -342,7 +378,7 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '${bal.toStringAsFixed(0)} ج.م',
+                                  '${bal.toStringAsFixed(2)} ج.م',
                                   style: const TextStyle(
                                     fontSize: 11,
                                     color: AppTheme.emeraldDark,

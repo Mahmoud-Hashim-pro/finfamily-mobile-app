@@ -18,6 +18,8 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
   List<CardModel> _cards = [];
   bool _isLoading = true;
   String? _errorMessage;
+  // userIds with a card replacement in flight
+  final Set<String> _replacing = {};
 
   @override
   void initState() {
@@ -65,13 +67,21 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
     }
   }
 
+  /// Writes an updated card back by its stable userId — never by a list index captured before an await,
+  /// because a concurrent refresh can reorder or shrink [_cards].
+  void _replaceCardInList(CardModel updated) {
+    final i = _cards.indexWhere((c) => c.userId == updated.userId);
+    if (i == -1) return; // card vanished during a concurrent refresh; nothing to update
+    _cards[i] = updated;
+  }
+
   Future<void> _toggleFreeze(int index) async {
     final current = _cards[index];
     if (current.isDeactivated) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('لا يمكن تنشيط أو تجميد كارت ملغي نهائياً.'),
+          content: Text('هذا الكارت ملغي نهائياً، استخدم زر "استخراج كارت جديد" لإصدار كارت بديل.'),
           backgroundColor: AppTheme.coral,
         ),
       );
@@ -87,14 +97,14 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
 
       if (!mounted) return;
       setState(() {
-        _cards[index] = CardModel(
+        _replaceCardInList(CardModel(
           id: current.id,
           userId: current.userId,
           cardNumber: current.cardNumber,
           cardholderName: current.cardholderName,
           status: newStatus,
           expiryDate: current.expiryDate,
-        );
+        ));
       });
 
       if (!mounted) return;
@@ -117,6 +127,75 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
           backgroundColor: AppTheme.coral,
         ),
       );
+    }
+  }
+
+  /// A deactivated card can only be replaced: POST /wallet/child/{id}/card/replace issues a new card number
+  /// and sets the card back to active.
+  Future<void> _replaceCard(CardModel current) async {
+    if (_replacing.contains(current.userId)) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('استخراج كارت جديد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Text(
+          'سيتم إصدار كارت ميزة جديد برقم جديد لـ ${current.cardholderName} وتفعيله فوراً. هل تريد المتابعة؟',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.navy, foregroundColor: Colors.white),
+            child: const Text('استخراج الكارت'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _replacing.add(current.userId));
+    try {
+      final res = await ApiClient().post(ApiConfig.childCardReplace(current.userId));
+      final data = res.data is Map ? res.data as Map : const {};
+
+      if (!mounted) return;
+      setState(() {
+        _replaceCardInList(CardModel(
+          id: current.id,
+          userId: current.userId,
+          cardNumber: data['card_number']?.toString() ?? current.cardNumber,
+          cardholderName: current.cardholderName,
+          status: data['card_status']?.toString() ?? 'active',
+          expiryDate: current.expiryDate,
+        ));
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم استخراج كارت جديد لـ ${current.cardholderName} وتفعيله بنجاح 💳'),
+          backgroundColor: AppTheme.emerald,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ApiErrorHandler.getErrorMessage(e)),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _replacing.remove(current.userId));
+      } else {
+        _replacing.remove(current.userId);
+      }
     }
   }
 
@@ -275,6 +354,34 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
                                       ? null
                                       : () => _toggleFreeze(index),
                                 ),
+                                if (card.isDeactivated) ...[
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton.icon(
+                                      onPressed: _replacing.contains(card.userId)
+                                          ? null
+                                          : () => _replaceCard(card),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.navy,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      icon: _replacing.contains(card.userId)
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                  strokeWidth: 2, color: Colors.white),
+                                            )
+                                          : const Icon(Icons.autorenew, size: 18),
+                                      label: const Text('استخراج كارت جديد'),
+                                    ),
+                                  ),
+                                ],
                               ],
                             );
                           },
