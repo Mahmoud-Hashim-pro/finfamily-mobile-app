@@ -306,13 +306,19 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(
-                                      card.cardholderName,
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w800,
-                                        color: AppTheme.navy,
-                                      ),
+                                    Expanded(
+                                       child: Text(
+                                         card.cardholderName,
+                                         maxLines: 1,
+                                         overflow: TextOverflow.ellipsis,
+                                         style: const TextStyle(
+                                           fontSize: 18,
+                                           fontWeight: FontWeight.w800,
+                                           color: AppTheme.navy,
+                                         ),
+                                       ),
+                                     ),
+                                     const SizedBox(width: 8)
                                     ),
                                     Container(
                                       padding: const EdgeInsets.symmetric(

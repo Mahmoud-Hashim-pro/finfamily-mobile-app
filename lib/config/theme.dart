@@ -39,16 +39,15 @@ class AppTheme {
         bodyColor: textPrimary,
         displayColor: textPrimary,
       ),
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        iconTheme: IconThemeData(color: navy),
-        titleTextStyle: TextStyle(
+        iconTheme: const IconThemeData(color: navy),
+        titleTextStyle: GoogleFonts.cairo(
           color: navy,
           fontSize: 18,
           fontWeight: FontWeight.bold,
-          fontFamily: 'Cairo',
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -60,10 +59,9 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          textStyle: const TextStyle(
+          textStyle: GoogleFonts.cairo(
             fontSize: 15,
             fontWeight: FontWeight.bold,
-            fontFamily: 'Cairo',
           ),
         ),
       ),

@@ -10,19 +10,19 @@ Built with **Flutter & Dart**, connecting directly to the production **FastAPI +
 
 ### 👪 Parent Portal
 * **Family Dashboard**: Real-time family overview, total balance, spending trends, and quick allowance transfers.
-* **Smart Allowance**: Automated weekly/monthly allowance distribution or instant one-tap transfers.
+* **Smart Allowance**: Instant one-tap transfers ("Disburse Now") with scheduled automated distribution on the roadmap.
 * **Granular Spending Limits**: Daily, weekly, and monthly limits per child with category-based restrictions (e.g. block Gaming or Fast Food).
 * **Card Controls**: Instant freeze, unfreeze, PIN reset, and deactivation for simulated Meeza cards.
 * **Approvals Hub**: Review and approve/reject chore submissions, reward redemptions, and high-value transactions.
 * **AI Parent Coach**: Financial parenting assistant with family-specific context.
-* **Mandatory 2FA**: TOTP-based two-factor authentication (Google/Microsoft Authenticator) & recovery codes.
+* **Two-Factor Authentication (2FA)**: Mandatory for Administrators, optional & recommended for Parents (TOTP-based via Google/Microsoft Authenticator & backup recovery codes).
 
 ### 🧒 Child Experience
 * **Child Home**: Friendly greeting, level progression, streaks, and quick action cards.
-* **Interactive Meeza Card**: 3D flip card animation with live masked card details, freeze toggle, and spend logs.
-* **Missions & Chores**: Complete tasks to earn pocket money (requires parent approval).
+* **Interactive Meeza Card**: 3D flip card animation with live masked card details, freeze toggle, POS purchase simulator, and spend logs.
+* **Missions & Chores**: Complete tasks to earn pocket money (requires parent approval) and request reward redemptions.
 * **Savings Goals**: Visual piggy bank tracker with goal timelines and AI-driven saving tips.
-* **Learn & Mini-Games**: 10 educational modules and 11 financial mini-games (Needs vs. Wants, Guess the Price, Budget Builder, etc.).
+* **Learn & Mini-Games**: 6 comprehensive financial literacy curriculum modules and 10 interactive educational mini-games (Needs vs. Wants, Guess the Price, Budget Challenge, Scam Detective, etc.).
 * **AI Kid Coach**: Safe, bilingual financial buddy for answering money questions.
 * **Sibling Leaderboard**: Friendly competition to promote smart saving habits.
 
@@ -39,8 +39,8 @@ Built with **Flutter & Dart**, connecting directly to the production **FastAPI +
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/<your-username>/FinFamily-Mobile.git
-cd FinFamily-Mobile
+git clone https://github.com/Mahmoud-Hashim-pro/finfamily-mobile-app.git
+cd finfamily-mobile-app
 
 # 2. Install dependencies
 flutter pub get

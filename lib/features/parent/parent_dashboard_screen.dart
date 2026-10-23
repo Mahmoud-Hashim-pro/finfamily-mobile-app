@@ -147,39 +147,48 @@ class _ParentDashboardScreenState extends State<ParentDashboardScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 22,
-                          backgroundColor: AppTheme.navy.withOpacity(0.1),
-                          child: const Text('👨', style: TextStyle(fontSize: 22)),
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              auth.user?['full_name'] ?? 'ولي الأمر',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: AppTheme.navy,
-                              ),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 22,
+                            backgroundColor: AppTheme.navy.withOpacity(0.1),
+                            child: const Text('👨', style: TextStyle(fontSize: 22)),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  auth.user?['full_name'] ?? 'ولي الأمر',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.navy,
+                                  ),
+                                ),
+                                Text(
+                                  _overview?['family_name'] ??
+                                      (auth.user?['full_name'] != null
+                                          ? 'عائلة ${auth.user!['full_name']}'
+                                          : 'عائلتي'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
-                            Text(
-                              _overview?['family_name'] ??
-                                  (auth.user?['full_name'] != null
-                                      ? 'عائلة ${auth.user!['full_name']}'
-                                      : 'عائلتي'),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppTheme.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     Row(
                       children: [
                         Container(

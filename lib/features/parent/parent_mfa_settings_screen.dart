@@ -590,6 +590,141 @@ class _ParentMfaSettingsScreenState extends State<ParentMfaSettingsScreen> {
     );
   }
 
+  Future<void> _showDeleteAccountDialog() async {
+    final auth = Provider.of<AuthState>(context, listen: false);
+    final usesGoogle = !auth.hasPassword;
+    final passwordController = TextEditingController();
+    final mfaController = TextEditingController();
+    bool isSubmitting = false;
+    String? dialogError;
+
+    try {
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: AppTheme.coral, size: 28),
+                SizedBox(width: 8),
+                Text('حذف الحساب نهائياً ⚠️', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.coral)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'تحذير حرج: سيؤدي هذا الإجراء إلى حذف حسابك وحسابات جميع الأطفال، وإلغاء جميع البطاقات والمحافظ والبيانات المالية نهائياً بدون إمكانية للاسترجاع.',
+                    style: TextStyle(fontSize: 12, height: 1.4, color: AppTheme.textPrimary),
+                  ),
+                  const SizedBox(height: 14),
+                  if (dialogError != null)
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(color: AppTheme.coral.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                      child: Text(dialogError!, style: const TextStyle(color: AppTheme.coral, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ),
+                  if (!usesGoogle)
+                    TextField(
+                      controller: passwordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'كلمة المرور الحالية للتأكيد',
+                        prefixIcon: Icon(Icons.lock_outline, color: AppTheme.navy),
+                      ),
+                    ),
+                  if (_mfaEnabled) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: mfaController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      decoration: const InputDecoration(
+                        labelText: 'رمز التحقق (2FA) أو كود الاستعادة',
+                        prefixIcon: Icon(Icons.security, color: AppTheme.emerald),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                child: const Text('إلغاء'),
+              ),
+              ElevatedButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        final pwd = passwordController.text.trim();
+                        final mfa = mfaController.text.trim();
+                        if (!usesGoogle && pwd.isEmpty) {
+                          setDialogState(() => dialogError = 'يرجى إدخال كلمة المرور لتأكيد الحذف');
+                          return;
+                        }
+                        if (_mfaEnabled && mfa.isEmpty) {
+                          setDialogState(() => dialogError = 'يرجى إدخال رمز التحقق بخطوتين');
+                          return;
+                        }
+
+                        setDialogState(() {
+                          isSubmitting = true;
+                          dialogError = null;
+                        });
+
+                        try {
+                          await ApiClient().delete(
+                            '/auth/account',
+                            data: {
+                              if (!usesGoogle) 'password': pwd,
+                              if (_mfaEnabled) 'totp_code': mfa,
+                            },
+                          );
+
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (!mounted) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('تم حذف الحساب والبيانات العائلية نهائياً 👋'),
+                              backgroundColor: AppTheme.navy,
+                            ),
+                          );
+
+                          await auth.logout();
+                          if (mounted) {
+                            Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                          }
+                        } catch (e) {
+                          if (ctx.mounted) {
+                            setDialogState(() {
+                              isSubmitting = false;
+                              dialogError = ApiErrorHandler.getErrorMessage(e);
+                            });
+                          }
+                        }
+                      },
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.coral),
+                child: isSubmitting
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('حذف الحساب نهائياً', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+      );
+    } finally {
+      passwordController.dispose();
+      mfaController.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -904,6 +1039,46 @@ class _ParentMfaSettingsScreenState extends State<ParentMfaSettingsScreen> {
                                   onPressed: _disableMfa,
                                 ),
                               ],
+                        const SizedBox(height: 24),
+                        // Danger Zone: Delete Account
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: AppTheme.coral.withOpacity(0.3)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.delete_forever, color: AppTheme.coral, size: 22),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'منطقة الخطر (Danger Zone)',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.coral),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'حذف حساب ولي الأمر وجميع بيانات العائلة نهائياً وفقاً لسياسة الخصوصية وحماية البيانات.',
+                                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                              ),
+                              const SizedBox(height: 14),
+                              OutlinedButton.icon(
+                                onPressed: _showDeleteAccountDialog,
+                                icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.coral),
+                                label: const Text('حذف حساب العائلة نهائياً', style: TextStyle(color: AppTheme.coral, fontWeight: FontWeight.bold)),
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: AppTheme.coral),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                             ),
                           ),
                         ],

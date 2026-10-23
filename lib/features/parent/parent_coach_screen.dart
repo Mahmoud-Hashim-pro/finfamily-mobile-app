@@ -124,7 +124,9 @@ class _ParentCoachScreenState extends State<ParentCoachScreen> {
       }
       _isTyping = true;
     });
-    _messageController.clear();
+    if (!isRetry) {
+      _messageController.clear();
+    }
     _scrollToBottom();
 
     try {

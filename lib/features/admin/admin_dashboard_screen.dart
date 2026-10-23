@@ -457,7 +457,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
               physics: const NeverScrollableScrollPhysics(),
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-              childAspectRatio: 1.5,
+              childAspectRatio: 1.25,
               children: [
                 _buildStatTile('👨‍👩‍👧‍👦 العائلات', '${totals['families'] ?? 0}', 'عائلة مسجلة'),
                 _buildStatTile('👥 المستخدمين', '${totals['users'] ?? 0}', '(${totals['parents'] ?? 0} آباء • ${totals['children'] ?? 0} أطفال)'),
@@ -904,10 +904,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(title, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
           const SizedBox(height: 4),
-          Text(val, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
-          Text(sub, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+          Text(val, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+          Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white38, fontSize: 10)),
         ],
       ),
     );

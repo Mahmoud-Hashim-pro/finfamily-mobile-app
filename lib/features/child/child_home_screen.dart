@@ -96,7 +96,7 @@ class _ChildHomeScreenState extends State<ChildHomeScreen> {
     final String avatar = (auth.user?['avatar'] ?? auth.user?['avatar_url'] ?? '👦').toString();
     final int level = (auth.user?['level'] as num?)?.toInt() ?? 1;
     final int xp = (auth.user?['xp'] as num?)?.toInt() ?? 0;
-    final int streak = (auth.user?['streak'] as num?)?.toInt() ?? 1;
+    final int streak = (auth.user?['streak'] as num?)?.toInt() ?? 0;
 
     // Backend LEVEL_THRESHOLDS = [(1, 0), (2, 400), (3, 900), (4, 1600), (5, 2500), (6, 3600), (7, 5000), (8, 7000)]
     const thresholds = [0, 400, 900, 1600, 2500, 3600, 5000, 7000];
@@ -132,44 +132,53 @@ class _ChildHomeScreenState extends State<ChildHomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppTheme.emerald.withOpacity(0.15),
-                            border: Border.all(color: AppTheme.emerald, width: 2),
-                          ),
-                          child: Center(
-                            child: Text(avatar, style: const TextStyle(fontSize: 28)),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'صباح الخير يا بطل! 🚀',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppTheme.textSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppTheme.emerald.withOpacity(0.15),
+                              border: Border.all(color: AppTheme.emerald, width: 2),
                             ),
-                            Text(
-                              childName,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w900,
-                                color: AppTheme.navy,
-                              ),
+                            child: Center(
+                              child: Text(avatar, style: const TextStyle(fontSize: 28)),
                             ),
-                          ],
-                        ),
-                      ],
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'صباح الخير يا بطل! 🚀',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.textSecondary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  childName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppTheme.navy,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     // Streak badge
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

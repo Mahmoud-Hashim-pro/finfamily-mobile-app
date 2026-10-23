@@ -98,8 +98,8 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       'color': AppTheme.navy,
       'desc': 'معاك ميزانية محددة.. اشترِ احتياجات العائلة دون تجاوز الميزانية.',
       'question': 'ميزانيتك 100 ج.م، وتريد شراء سلع ضرورية: حليب (30 ج) وخبز (20 ج) ولعبة (70 ج):',
-      'optA': 'شراء الحليب والخبز فقط (50 ج.م) والادخار ✅',
-      'optB': 'شراء اللعبة واستدانة الباقي ❌',
+      'optA': 'شراء الحليب والخبز فقط (50 ج.م) والادخار',
+      'optB': 'شراء اللعبة واستدانة الباقي',
       'isCorrectA': true,
     },
     {
@@ -111,8 +111,8 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       'color': AppTheme.emerald,
       'desc': 'قسّم مصروفك الأسبوعي بذكاء بين الاحتياجات والادخار.',
       'question': 'أفضل قاعدة ذهبية لتقسيم المصروف الأسبوعي هي:',
-      'optA': '50% احتياجات، 30% رغبات، 20% ادخار ✅',
-      'optB': 'صرف 100% في أول يومين ❌',
+      'optA': '50% احتياجات، 30% رغبات، 20% ادخار',
+      'optB': 'صرف 100% في أول يومين',
       'isCorrectA': true,
     },
     {
@@ -124,8 +124,8 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       'color': AppTheme.gold,
       'desc': 'صنف العناصر بسرعة: هل هي أساسية للعيش أم كمالية؟',
       'question': 'شراء وجبة طعام صحية ومياه شرب يعتبر:',
-      'optA': 'احتياج أساسي وضروري ✅',
-      'optB': 'رغبة كمالية وترفيه ❌',
+      'optA': 'احتياج أساسي وضروري',
+      'optB': 'رغبة كمالية وترفيه',
       'isCorrectA': true,
     },
     {
@@ -137,8 +137,8 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       'color': AppTheme.coral,
       'desc': 'خمن السعر الأقرب للمشتريات اليومية لتصبح متسوقاً واعياً.',
       'question': 'السعر التقريبي المنطقي لعلبة ألوان خشبية مدرسية جيدة:',
-      'optA': 'حوالي 35 إلى 50 ج.م ✅',
-      'optB': 'حوالي 500 ج.م ❌',
+      'optA': 'حوالي 35 إلى 50 ج.م',
+      'optB': 'حوالي 500 ج.م',
       'isCorrectA': true,
     },
     {
@@ -150,8 +150,8 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       'color': AppTheme.gold,
       'desc': 'اجمع العملات النقدية وتجنب فخاخ الصرف غير المبرر.',
       'question': 'إذا حصلت على عيدية 200 ج.م، التصرف الأذكى هو:',
-      'optA': 'وضع جزء منها في حصالة هدفك والتمتع بالباقي ✅',
-      'optB': 'شراء كل الحلوى في المحل دفعة واحدة ❌',
+      'optA': 'وضع جزء منها في حصالة هدفك والتمتع بالباقي',
+      'optB': 'شراء كل الحلوى في المحل دفعة واحدة',
       'isCorrectA': true,
     },
     {
@@ -163,8 +163,8 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       'color': AppTheme.blue,
       'desc': 'صنف النفقات بحسب أولويتها في الحياة اليومية.',
       'question': 'دفع فاتورة الكهرباء والإنترنت للمنزل يعتبر:',
-      'optA': 'مصروف أساسي ملزم ✅',
-      'optB': 'مصروف ترفيهي اختياري ❌',
+      'optA': 'مصروف أساسي ملزم',
+      'optB': 'مصروف ترفيهي اختياري',
       'isCorrectA': true,
     },
     {
@@ -176,8 +176,8 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       'color': AppTheme.purple,
       'desc': 'احسب الباقي المستحق بدقة لتتأكد من استلام فلوسك كاملة.',
       'question': 'اشتريت بمبلغ 65 ج.م ودفعت للبائع ورقة فئة 100 ج.م، كم الباقي؟',
-      'optA': '35 ج.م ✅',
-      'optB': '25 ج.م ❌',
+      'optA': '35 ج.م',
+      'optB': '25 ج.م',
       'isCorrectA': true,
     },
     {
@@ -189,8 +189,8 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       'color': AppTheme.emerald,
       'desc': 'قارن بين العروض واشترِ السلعة ذات القيمة الحقيقية.',
       'question': 'عرض 2 بسعر 1 لمنتج لا تحتاجه وسينتهي تاريخه غداً:',
-      'optA': 'تجنبه لأنه إهدار للمال دون فائدة ✅',
-      'optB': 'اشترِه لأنه عليه تخفيض كبير ❌',
+      'optA': 'تجنبه لأنه إهدار للمال دون فائدة',
+      'optB': 'اشترِه لأنه عليه تخفيض كبير',
       'isCorrectA': true,
     },
     {
@@ -202,8 +202,8 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       'color': AppTheme.coral,
       'desc': 'اكتشف الرسائل والمواقع المزيفة واحمي رقم PIN لكارتك.',
       'question': 'وصلتك رسالة "مبروك كسبت مليون جنيه! أرسل رقم كارت ميزة والـ PIN":',
-      'optA': 'تجاهلها فوراً وأبلغ بابا أو ماما - محاولة احتيال! ✅',
-      'optB': 'إرسال رقم الـ PIN فوراً للحصول على الجائزة ❌',
+      'optA': 'تجاهلها فوراً وأبلغ بابا أو ماما - محاولة احتيال!',
+      'optB': 'إرسال رقم الـ PIN فوراً للحصول على الجائزة',
       'isCorrectA': true,
     },
     {
@@ -215,8 +215,8 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       'color': AppTheme.navy,
       'desc': 'افهم سحر نمو الأموال بالصبر والاستثمار طويل الأمد.',
       'question': 'الفائدة أو العائد الاستثماري على المدخرات يعني:',
-      'optA': 'مكافأة مالية إضافية تُضاف لفلوسك لأنك ادخرتها بذكاء ✅',
-      'optB': 'خصم بنكي يقلل من رصيدك ❌',
+      'optA': 'مكافأة مالية إضافية تُضاف لفلوسك لأنك ادخرتها بذكاء',
+      'optB': 'خصم بنكي يقلل من رصيدك',
       'isCorrectA': true,
     },
     {
@@ -228,8 +228,8 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       'color': AppTheme.emerald,
       'desc': 'تحدى نفسك وادخر لشراء حلمك دون استعجال.',
       'question': 'إذا كنت تريد شراء دراجة بـ 1200 ج.م ومصروفك يسمح بادخار 100 ج شهرياً:',
-      'optA': 'الصبر والادخار لمدة سنة للوصول للهدف بكل فخر ✅',
-      'optB': 'الاستسلام وصرف الفلوس على أشياء صغيرة غير مفيدة ❌',
+      'optA': 'الصبر والادخار لمدة سنة للوصول للهدف بكل فخر',
+      'optB': 'الاستسلام وصرف الفلوس على أشياء صغيرة غير مفيدة',
       'isCorrectA': true,
     },
   ];
@@ -353,7 +353,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       ScaffoldMessenger.of(context).showSnackBar(
         alreadyCompleted
             ? SnackBar(
-                content: Text('لقد أتممت درس "${lesson['title']}" مسبقاً ✅'),
+                content: Text('لقد أتممت درس "${lesson['title']}" مسبقاً'),
                 backgroundColor: AppTheme.navy,
               )
             : SnackBar(
@@ -439,7 +439,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
               child: Text(
-                isDone ? 'تم إنهاء هذا الدرس مسبقاً ✅' : 'فهمت الدرس وأريد المكافأة 🎓 (+${lesson['xp']} XP)',
+                isDone ? 'تم إنهاء هذا الدرس مسبقاً' : 'فهمت الدرس وأريد المكافأة 🎓 (+${lesson['xp']} XP)',
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
               ),
             ),
@@ -507,49 +507,47 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
               if (isSubmitting)
                 const Padding(
                   padding: EdgeInsets.all(16),
-                  child: CircularProgressIndicator(color: AppTheme.emerald),
+                  child: CircularProgressIndicator(color: AppTheme.navy),
                 )
               else
-                Row(
+                Column(
                   children: [
-                    Expanded(
+                    SizedBox(
+                      width: double.infinity,
                       child: ElevatedButton(
                         onPressed: () async {
                           setSheetState(() => isSubmitting = true);
                           await _submitGameCompletion(ctx, game, isCorrect: true, selectedOption: 'optA');
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.emerald,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          backgroundColor: AppTheme.navy,
+                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
                         child: Text(
-                          game['optA'] ?? 'خيار أ ✅',
+                          game['optA'] ?? 'الخيار (أ)',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('حاول مرة أخرى! راجع مبادئ الإدارة المالية الذكية 💡'),
-                              backgroundColor: AppTheme.coral,
-                            ),
-                          );
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          setSheetState(() => isSubmitting = true);
+                          await _submitGameCompletion(ctx, game, isCorrect: false, selectedOption: 'optB');
                         },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.navy,
+                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
                         child: Text(
-                          game['optB'] ?? 'خيار ب ❌',
+                          game['optB'] ?? 'الخيار (ب)',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 12),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
                         ),
                       ),
                     ),
@@ -601,7 +599,11 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       if (!mounted) return;
 
       String message;
-      if (already) {
+      Color snackColor = AppTheme.emerald;
+      if (!isCorrect || (xpAwarded == 0 && !already)) {
+        message = 'إجابة غير صحيحة، راجع السؤال وحاول مرة أخرى! 💡';
+        snackColor = AppTheme.coral;
+      } else if (already) {
         message = 'أحسنت! أتممت لعبة "${game['title']}". لقد حصلت على جائزة هذه اللعبة اليوم مسبقاً! 🌟';
       } else {
         message = 'إجابة صحيحة يا بطل! 🎉 حصلت على +$xpAwarded XP و +${coinsAwarded.toStringAsFixed(2)} ج.م كوينز!';
@@ -613,7 +615,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: AppTheme.emerald,
+          backgroundColor: snackColor,
           duration: const Duration(seconds: 4),
         ),
       );

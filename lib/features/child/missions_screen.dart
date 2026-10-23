@@ -125,6 +125,142 @@ class _MissionsScreenState extends State<MissionsScreen> {
     );
   }
 
+  void _showRedemptionDialog() {
+    final titleController = TextEditingController();
+    final amountController = TextEditingController(text: '50.00');
+    String selectedCategory = 'Entertainment';
+    bool isSubmitting = false;
+    String? dialogError;
+
+    final categories = ['Entertainment', 'Shopping', 'Education', 'Gaming', 'Food', 'Other'];
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Text('🏆 ', style: TextStyle(fontSize: 22)),
+              Text('طلب استبدال مكافأة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.navy)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'اطلب من ولي الأمر مكافأة أو هدية مقابل خصم قيمتها من رصيد محفظتك:',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                ),
+                const SizedBox(height: 14),
+                if (dialogError != null)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(color: AppTheme.coral.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                    child: Text(dialogError!, style: const TextStyle(color: AppTheme.coral, fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'عنوان المكافأة (مثال: شراء قصة، لعبة)',
+                    prefixIcon: Icon(Icons.card_giftcard, color: AppTheme.navy),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'القيمة (جنيه مصري)',
+                    prefixIcon: Icon(Icons.monetization_on_outlined, color: AppTheme.emerald),
+                    suffixText: 'ج.م',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedCategory,
+                  decoration: const InputDecoration(
+                    labelText: 'فئة الطلب',
+                    prefixIcon: Icon(Icons.category, color: AppTheme.navy),
+                  ),
+                  items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                  onChanged: (val) {
+                    if (val != null) setDialogState(() => selectedCategory = val);
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final title = titleController.text.trim();
+                      if (title.isEmpty) {
+                        setDialogState(() => dialogError = 'يرجى إدخال اسم المكافأة');
+                        return;
+                      }
+                      final amt = double.tryParse(amountController.text.trim());
+                      if (amt == null || amt <= 0) {
+                        setDialogState(() => dialogError = 'يرجى إدخال مبلغ صحيح');
+                        return;
+                      }
+
+                      setDialogState(() {
+                        isSubmitting = true;
+                        dialogError = null;
+                      });
+
+                      try {
+                        await ApiClient().post(
+                          '/missions/redeem',
+                          data: {
+                            'title': title,
+                            'reward': amt,
+                            'category': selectedCategory,
+                            'icon': '🏆',
+                          },
+                        );
+
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (!mounted) return;
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('تم إرسال طلب استبدال المكافأة لولي الأمر للموافقة عليها! 🎁'),
+                            backgroundColor: AppTheme.emerald,
+                          ),
+                        );
+                        _loadMissions();
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          setDialogState(() {
+                            isSubmitting = false;
+                            dialogError = ApiErrorHandler.getErrorMessage(e);
+                          });
+                        }
+                      }
+                    },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.emerald),
+              child: isSubmitting
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('إرسال الطلب'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -192,100 +328,24 @@ class _MissionsScreenState extends State<MissionsScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                const Text(
-                  'قائمة المهام العائلية:',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.navy,
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                if (_isLoading)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(32),
-                      child: CircularProgressIndicator(color: AppTheme.emerald),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'قائمة المهام العائلية:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.navy,
+                      ),
                     ),
-                  )
-                else if (_errorMessage != null)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.red.shade100),
+                    TextButton.icon(
+                      onPressed: _showRedemptionDialog,
+                      icon: const Icon(Icons.redeem, size: 18, color: AppTheme.emerald),
+                      label: const Text('طلب استبدال 🏆', style: TextStyle(color: AppTheme.emerald, fontWeight: FontWeight.bold, fontSize: 13)),
                     ),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.error_outline, size: 44, color: Colors.redAccent),
-                        const SizedBox(height: 12),
-                        Text(
-                          _errorMessage!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 13, color: AppTheme.navy, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: _loadMissions,
-                          icon: const Icon(Icons.refresh, size: 18),
-                          label: const Text('إعادة المحاولة'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.emerald,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (_missions.isEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(28),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppTheme.cardBorder),
-                    ),
-                    child: const Column(
-                      children: [
-                        Text('🎉', style: TextStyle(fontSize: 40)),
-                        SizedBox(height: 12),
-                        Text(
-                          'لا توجد مهام حالية مخصصة لك',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.navy,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'اطلب من بابا أو ماما إضافة مهمة منزلية جديدة لتحصل على مكافأة في كارتك!',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _missions.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final m = _missions[index];
-
-                      Color badgeColor;
-                      String statusText;
-                      Color textColor;
-
-                      switch (m.status) {
-                        case 'approved':
-                          badgeColor = AppTheme.emerald.withOpacity(0.15);
+                  ],
+                )
                           textColor = AppTheme.emeraldDark;
                           statusText = m.isRedemption ? 'تمت الموافقة على طلب الصرف ✅' : 'تمت الموافقة وصرف المكافأة ✅';
                           break;

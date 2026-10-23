@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'config/theme.dart';
@@ -10,8 +11,11 @@ import 'features/auth/role_select_screen.dart';
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
   runApp(
     MultiProvider(
       providers: [

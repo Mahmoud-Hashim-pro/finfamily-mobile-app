@@ -89,7 +89,7 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
       if (!mounted) return;
       setState(() {
         _dailyLimit = (data['daily_limit'] as num?)?.toDouble();
-        _dailySpent = (data['daily_spent'] as num?)?.toDouble();
+        _dailySpent = (data['daily_spent'] as num?)?.toDouble() ?? (data['spent_today'] as num?)?.toDouble();
         _card = CardModel(
           id: data['id']?.toString() ?? '',
           userId: data['owner_id']?.toString() ?? auth.user?['id']?.toString() ?? '',
@@ -156,6 +156,200 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
       default:
         return isCredit ? '📥' : '📤';
     }
+  }
+
+  void _showSimulatePurchaseSheet() {
+    final amountController = TextEditingController(text: '50.00');
+    final merchantController = TextEditingController(text: 'سوبرماركت مترو');
+    String selectedCategory = 'Groceries';
+    bool isSubmitting = false;
+    String? sheetError;
+
+    final List<String> categories = [
+      'Groceries',
+      'Food',
+      'Education',
+      'Books',
+      'Entertainment',
+      'Sports',
+      'Shopping',
+      'Gaming',
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            top: 24,
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'محاكاة عملية شراء (POS Simulator) 💳',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.navy),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'جرّب الدفع بكارت ميزة الافتراضي كأنك في محل أو متجر حقيقي!',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              if (sheetError != null)
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.coral.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    sheetError!,
+                    style: const TextStyle(color: AppTheme.coral, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              TextField(
+                controller: merchantController,
+                decoration: const InputDecoration(
+                  labelText: 'اسم المتجر / التاجر',
+                  prefixIcon: Icon(Icons.storefront, color: AppTheme.navy),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'المبلغ (جنيه مصري)',
+                  prefixIcon: Icon(Icons.monetization_on_outlined, color: AppTheme.emerald),
+                  suffixText: 'ج.م',
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text('اختر فئة المشتريات:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.navy)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: categories.map((cat) {
+                  final isSelected = cat == selectedCategory;
+                  return ChoiceChip(
+                    label: Text(cat),
+                    selected: isSelected,
+                    selectedColor: AppTheme.navy,
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.white : AppTheme.navy,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 12,
+                    ),
+                    onSelected: (val) {
+                      if (val) setSheetState(() => selectedCategory = cat);
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        final amt = double.tryParse(amountController.text.trim());
+                        if (amt == null || amt <= 0) {
+                          setSheetState(() => sheetError = 'يرجى إدخال مبلغ صحيح');
+                          return;
+                        }
+                        final merchant = merchantController.text.trim();
+                        if (merchant.isEmpty) {
+                          setSheetState(() => sheetError = 'يرجى كتابة اسم المتجر');
+                          return;
+                        }
+
+                        setSheetState(() {
+                          isSubmitting = true;
+                          sheetError = null;
+                        });
+
+                        try {
+                          final idempKey = 'pos_sim_${DateTime.now().millisecondsSinceEpoch}';
+                          final res = await ApiClient().post(
+                            '/card/purchases',
+                            data: {
+                              'amount': amt,
+                              'merchant': merchant,
+                              'category': selectedCategory,
+                              'idempotency_key': idempKey,
+                            },
+                          );
+
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (!mounted) return;
+
+                          final status = res.data['status']?.toString() ?? 'completed';
+                          if (status == 'completed') {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('تمت العملية بنجاح! خصم ${amt.toStringAsFixed(2)} ج.م من الكارت 🎉'),
+                                backgroundColor: AppTheme.emerald,
+                              ),
+                            );
+                          } else if (status == 'pending') {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('العملية تجاوزت حد الصرف ومُعلّقة في انتظار موافقة ولي الأمر ⏳'),
+                                backgroundColor: AppTheme.gold,
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('تم رفض العملية من النظام: ${res.data['review_note'] ?? 'تجاوزت الحد المسموح'} 🛑'),
+                                backgroundColor: AppTheme.coral,
+                              ),
+                            );
+                          }
+                          _loadCardData();
+                        } catch (e) {
+                          if (ctx.mounted) {
+                            setSheetState(() {
+                              isSubmitting = false;
+                              sheetError = ApiErrorHandler.getErrorMessage(e);
+                            });
+                          }
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.emerald,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                child: isSubmitting
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('تنفيذ عملية الشراء 💳', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -232,6 +426,21 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                               style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.navy),
                             ),
                           ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _showSimulatePurchaseSheet,
+                          icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+                          label: const Text('محاكاة عملية شراء بالكارت (POS Simulator) 🛍️'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.navy,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
                         ),
                       ),
                     ],

@@ -239,7 +239,10 @@ class _WalletScreenState extends State<WalletScreen> {
                               style: TextStyle(color: Colors.white70, fontSize: 11),
                             ),
                             const SizedBox(height: 6),
-                            Text(
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
                               '${_walletBalance.toStringAsFixed(2)} ج.م',
                               style: const TextStyle(
                                 color: Colors.white,
@@ -247,6 +250,7 @@ class _WalletScreenState extends State<WalletScreen> {
                                 fontWeight: FontWeight.w900,
                                 fontFamily: 'monospace',
                               ),
+                            )
                             ),
                           ],
                         ),
@@ -270,7 +274,10 @@ class _WalletScreenState extends State<WalletScreen> {
                               style: TextStyle(color: Colors.white70, fontSize: 11),
                             ),
                             const SizedBox(height: 6),
-                            Text(
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
                               '${_savingsBalance.toStringAsFixed(2)} ج.م',
                               style: const TextStyle(
                                 color: Colors.white,
@@ -278,6 +285,7 @@ class _WalletScreenState extends State<WalletScreen> {
                                 fontWeight: FontWeight.w900,
                                 fontFamily: 'monospace',
                               ),
+                            )
                             ),
                           ],
                         ),

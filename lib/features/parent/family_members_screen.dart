@@ -256,6 +256,186 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     );
   }
 
+  Future<void> _confirmRotateFamilyCode() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('تغيير كود العائلة 🔄', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: const Text(
+          'هل أنت متأكد من تغيير كود العائلة؟ سيتم إلغاء الكود الحالي فوراً وسيتعين على أفراد العائلة استخدام الكود الجديد.',
+          style: TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.coral),
+            child: const Text('تأكيد التغيير', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final res = await ApiClient().post('/auth/family/code/rotate');
+      final newCode = res.data['family_code']?.toString() ?? '';
+      if (!mounted) return;
+      setState(() => _familyCode = newCode);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم تغيير كود العائلة بنجاح: $newCode 🔑'),
+          backgroundColor: AppTheme.emerald,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ApiErrorHandler.getErrorMessage(e)),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
+    }
+  }
+
+  void _showResetPinDialog(Map child) {
+    final pinController = TextEditingController();
+    bool isSubmitting = false;
+    String? dialogError;
+    final childId = (child['id'] ?? '').toString();
+    final childName = child['full_name'] ?? child['name'] ?? 'الطفل';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('إعادة تعيين PIN لـ $childName 🔒', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('أدخل رمز PIN جديد مكوّن من 6 أرقام للطفل:', style: TextStyle(fontSize: 12)),
+              const SizedBox(height: 12),
+              if (dialogError != null)
+                Text(dialogError!, style: const TextStyle(color: AppTheme.coral, fontSize: 12)),
+              TextField(
+                controller: pinController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'رمز PIN الجديد',
+                  prefixIcon: Icon(Icons.pin, color: AppTheme.navy),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final rawPin = pinController.text.trim();
+                      final pin = normalizeChildPin(rawPin);
+                      if (pin == null) {
+                        setDialogState(() => dialogError = 'يجب أن يتكون رمز PIN من 6 أرقام');
+                        return;
+                      }
+
+                      setDialogState(() {
+                        isSubmitting = true;
+                        dialogError = null;
+                      });
+
+                      try {
+                        await ApiClient().post(
+                          '/auth/parent/children/$childId/reset-pin',
+                          data: {'new_pin': pin},
+                        );
+
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (!mounted) return;
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('تم إعادة تعيين رمز PIN لـ $childName بنجاح! 🔒'),
+                            backgroundColor: AppTheme.emerald,
+                          ),
+                        );
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          setDialogState(() {
+                            isSubmitting = false;
+                            dialogError = ApiErrorHandler.getErrorMessage(e);
+                          });
+                        }
+                      }
+                    },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.emerald),
+              child: isSubmitting
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('حفظ الرمز الجديد'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDeleteChildDialog(Map child) async {
+    final childId = (child['id'] ?? '').toString();
+    final childName = child['full_name'] ?? child['name'] ?? 'الطفل';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('حذف حساب $childName ⚠️', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.coral)),
+        content: Text(
+          'هل أنت متأكد تماماً من حذف حساب $childName؟ سيتم حذف جميع بيانات الطفل ومحفظته وبطاقته وسجلاته نهائياً ولا يمكن استرجاعها.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.coral),
+            child: const Text('نعم، حذف الحساب نهائياً', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await ApiClient().delete('/auth/parent/children/$childId');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم حذف حساب $childName بنجاح 🗑️'),
+          backgroundColor: AppTheme.emerald,
+        ),
+      );
+      _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ApiErrorHandler.getErrorMessage(e)),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthState>(context);
@@ -356,6 +536,11 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                               );
                             },
                             icon: const Icon(Icons.copy, color: AppTheme.gold),
+                          IconButton(
+                            tooltip: 'تغيير كود العائلة',
+                            onPressed: _confirmRotateFamilyCode,
+                            icon: const Icon(Icons.autorenew, color: Colors.white70),
+                          ),
                           ),
                         ],
                       ),
@@ -530,6 +715,38 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                                   ],
                                 ],
                               ),
+                            ),
+                            PopupMenuButton<String>(
+                              icon: const Icon(Icons.more_vert, color: AppTheme.navy),
+                              onSelected: (val) {
+                                if (val == 'reset_pin') {
+                                  _showResetPinDialog(c);
+                                } else if (val == 'delete_child') {
+                                  _showDeleteChildDialog(c);
+                                }
+                              },
+                              itemBuilder: (ctx) => [
+                                const PopupMenuItem(
+                                  value: 'reset_pin',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.lock_reset, size: 18, color: AppTheme.navy),
+                                      SizedBox(width: 8),
+                                      Text('إعادة تعيين PIN'),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'delete_child',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.delete_outline, size: 18, color: AppTheme.coral),
+                                      SizedBox(width: 8),
+                                      Text('حذف الحساب', style: TextStyle(color: AppTheme.coral)),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),

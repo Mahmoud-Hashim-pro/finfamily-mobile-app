@@ -113,11 +113,11 @@ class _ChildProfileScreenState extends State<ChildProfileScreen> {
     final String avatar = (user['avatar'] ?? user['avatar_url'] ?? '👦').toString();
     final int level = user['level'] is int ? user['level'] : int.tryParse('${user['level']}') ?? 1;
     final int xp = user['xp'] is int ? user['xp'] : int.tryParse('${user['xp']}') ?? 0;
-    final int streak = user['streak'] is int ? user['streak'] : int.tryParse('${user['streak']}') ?? 1;
+    final int streak = user['streak'] is int ? user['streak'] : int.tryParse('${user['streak']}') ?? 0;
 
     final double savingsBalance = (_walletData?['savings_balance'] ?? 0.0).toDouble();
     final double totalBalance = (_walletData?['balance'] ?? 0.0).toDouble();
-    final int financialScore = _walletData?['financial_score'] ?? 85;
+    final int financialScore = _walletData?['financial_score'] ?? 50;
 
     if (_isLoading && _walletData == null) {
       return Scaffold(
