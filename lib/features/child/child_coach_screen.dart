@@ -107,14 +107,16 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
       return;
     }
 
-    final bool hasUserBubble = isRetry &&
-        _messages.isNotEmpty &&
-        _messages.last['role'] == 'user' &&
-        _messages.last['text'] == q;
+    final int existingUserIndex = isRetry
+        ? _messages.lastIndexWhere((m) => m['role'] == 'user' && m['text'] == q)
+        : -1;
+    final bool hasUserBubble = existingUserIndex != -1;
 
     // Previous turns only (the current question is sent as `message`)
-    final history = buildCoachHistory(
-        hasUserBubble ? _messages.sublist(0, _messages.length - 1) : _messages);
+    final historyMessages = hasUserBubble
+        ? (List<Map<String, String>>.from(_messages)..removeAt(existingUserIndex))
+        : _messages;
+    final history = buildCoachHistory(historyMessages);
 
     setState(() {
       if (!hasUserBubble) {
@@ -135,14 +137,21 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
       );
       if (!mounted) return;
 
+      final status = res.data['status']?.toString() ?? 'success';
+      final defaultReply = status == 'spend_ceiling_exceeded'
+          ? 'تم الوصول إلى الحد الأقصى لميزانية المساعد الذكي الشهرية. يرجى مراجعة ولي الأمر أو مسؤول العائلة.'
+          : (status == 'error'
+              ? 'حدث خطأ أثناء معالجة الطلب، يرجى المحاولة مرة أخرى.'
+              : 'أنا هنا لمساعدتك دائماً يا بطل! 🌟');
       final reply = res.data['reply']?.toString() ??
           res.data['response']?.toString() ??
-          'أنا هنا لمساعدتك دائماً يا بطل! 🌟';
-      final status = res.data['status']?.toString() ?? 'success';
+          defaultReply;
       final requestId = res.data['request_id']?.toString();
 
       setState(() {
-        if (status == 'emergency_disabled' || status == 'quota_exceeded') {
+        if (status == 'emergency_disabled' ||
+            status == 'quota_exceeded' ||
+            status == 'spend_ceiling_exceeded') {
           _messages.add({
             'role': 'bot',
             'text': reply,
@@ -150,7 +159,7 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
             'local': 'true', // informative notice: never sent back in history
             if (requestId != null) 'request_id': requestId,
           });
-        } else if (status == 'rate_limited' || status == 'timeout') {
+        } else if (status == 'rate_limited' || status == 'timeout' || status == 'error') {
           _messages.add({
             'role': 'bot',
             'text': reply,
@@ -164,6 +173,13 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
             'role': 'bot',
             'text': reply,
             'status': 'refusal',
+            if (requestId != null) 'request_id': requestId,
+          });
+        } else if (status == 'fallback') {
+          _messages.add({
+            'role': 'bot',
+            'text': reply,
+            'status': 'fallback',
             if (requestId != null) 'request_id': requestId,
           });
         } else {
@@ -240,8 +256,23 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
       );
     }
 
-    // Bot messages: informative notice bubble for emergency_disabled or quota_exceeded
-    if (status == 'emergency_disabled' || status == 'quota_exceeded') {
+    // Bot messages: informative notice bubble for emergency_disabled, quota_exceeded, or spend_ceiling_exceeded
+    if (status == 'emergency_disabled' ||
+        status == 'quota_exceeded' ||
+        status == 'spend_ceiling_exceeded') {
+      final IconData noticeIcon;
+      final String noticeTitle;
+      if (status == 'spend_ceiling_exceeded') {
+        noticeIcon = Icons.savings_outlined;
+        noticeTitle = 'تنبيه: سقف الميزانية الشهري 💰';
+      } else if (status == 'quota_exceeded') {
+        noticeIcon = Icons.hourglass_top_rounded;
+        noticeTitle = 'تنبيه: استهلاك الرصيد ⏳';
+      } else {
+        noticeIcon = Icons.info_outline;
+        noticeTitle = 'تنويه هام 📢';
+      }
+
       return Align(
         alignment: Alignment.centerRight,
         child: Container(
@@ -274,13 +305,13 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    status == 'quota_exceeded' ? Icons.hourglass_top_rounded : Icons.info_outline,
+                    noticeIcon,
                     color: const Color(0xFFD97706),
                     size: 18,
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    status == 'quota_exceeded' ? 'تنبيه: استهلاك الرصيد ⏳' : 'تنويه هام 📢',
+                    noticeTitle,
                     style: const TextStyle(
                       color: Color(0xFFB45309),
                       fontWeight: FontWeight.bold,
