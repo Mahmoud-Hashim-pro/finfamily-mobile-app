@@ -40,9 +40,10 @@ class MissionModel {
 
   factory MissionModel.fromJson(Map<String, dynamic> json) {
     final double parsedReward = ((json['reward'] ?? json['reward_amount'] ?? json['reward_egp'] ?? 0.0) as num).toDouble();
+    // Mirrors the backend: an approved chore awards int(reward) XP, redemptions award none
     final int parsedXp = (json['reward_xp'] != null || json['reward_points'] != null || json['reward_coins'] != null)
         ? ((json['reward_xp'] ?? json['reward_points'] ?? json['reward_coins']) as num).toInt()
-        : (parsedReward * 10).toInt();
+        : ((json['kind'] ?? 'chore') == 'chore' ? parsedReward.toInt() : 0);
 
     return MissionModel(
       id: (json['id'] ?? '').toString(),

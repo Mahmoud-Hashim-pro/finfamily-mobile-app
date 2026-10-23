@@ -6,6 +6,19 @@ import '../../core/auth_state.dart';
 import '../../core/api_client.dart';
 import '../../core/error_handler.dart';
 
+/// Lesson path statuses: a lesson is 'completed' if the server/local list has it, otherwise
+/// 'in_progress' when it is the first lesson or the previous one is completed, else 'locked'.
+@visibleForTesting
+List<String> computeLessonStatuses(List<String> orderedIds, Iterable<String> completed) {
+  final done = completed.toSet();
+  return [
+    for (int i = 0; i < orderedIds.length; i++)
+      done.contains(orderedIds[i])
+          ? 'completed'
+          : ((i == 0 || done.contains(orderedIds[i - 1])) ? 'in_progress' : 'locked'),
+  ];
+}
+
 class LearnScreen extends StatefulWidget {
   const LearnScreen({super.key});
 
@@ -15,6 +28,8 @@ class LearnScreen extends StatefulWidget {
 
 class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  // Lessons whose completion POST is still in flight (blocks double claims)
+  final Set<String> _claimingLessonIds = {};
 
   final List<Map<String, dynamic>> _lessons = [
     {
@@ -22,7 +37,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       'title': 'أساسيات المال والنقود',
       'icon': '🪙',
       'xp': 100,
-      'status': 'completed',
+      'status': 'in_progress',
       'desc': 'ما هو المال ولماذا نستخدمه في حياتنا اليومية؟',
       'content': 'النقود هي وسيلة للتبادل بدلاً من المقايضة القديمة. نستخدمها لشراء ما نحتاجه ولتحديد قيمة الأشياء، كما نستخدمها للادخار للمستقبل.',
     },
@@ -232,22 +247,35 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
     super.dispose();
   }
 
+  /// Real child id for the per-child progress cache. Never falls back to a shared key:
+  /// if /auth/me has not loaded yet, try once more, otherwise skip local caching.
+  Future<String?> _resolveChildId(AuthState auth) async {
+    var id = auth.user?['id']?.toString();
+    if (id == null || id.isEmpty) {
+      await auth.refreshCurrentUser();
+      id = auth.user?['id']?.toString();
+    }
+    return (id == null || id.isEmpty) ? null : id;
+  }
+
   Future<void> _loadLessonProgress() async {
     try {
       final auth = Provider.of<AuthState>(context, listen: false);
-      final childId = auth.user?['id']?.toString() ?? 'default';
       final prefs = await SharedPreferences.getInstance();
-      List<String> completed = prefs.getStringList('completed_lessons_$childId') ?? ['les_1'];
+      // Purge the legacy shared cache that leaked progress between children
+      await prefs.remove('completed_lessons_default');
+      final childId = await _resolveChildId(auth);
+      final cacheKey = childId == null ? null : 'completed_lessons_$childId';
+      List<String> completed = (cacheKey == null ? null : prefs.getStringList(cacheKey)) ?? <String>[];
 
-      // Sync authoritative completed lessons from backend
+      // Server list is authoritative: replace the local cache with it (no merge)
       try {
         final res = await ApiClient().get('/lessons/completed');
         if (res.data is List) {
-          final serverList = (res.data as List).map((e) => e.toString()).toList();
-          for (var s in serverList) {
-            if (!completed.contains(s)) completed.add(s);
+          completed = (res.data as List).map((e) => e.toString()).toList();
+          if (cacheKey != null) {
+            await prefs.setStringList(cacheKey, completed);
           }
-          await prefs.setStringList('completed_lessons_$childId', completed);
         }
       } catch (_) {
         // Fallback to local storage if offline
@@ -255,71 +283,87 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
 
       if (!mounted) return;
       setState(() {
+        final statuses = computeLessonStatuses(
+          _lessons.map((l) => l['id'] as String).toList(),
+          completed,
+        );
         for (int i = 0; i < _lessons.length; i++) {
-          final id = _lessons[i]['id'];
-          if (completed.contains(id)) {
-            _lessons[i]['status'] = 'completed';
-          } else {
-            final prevCompleted = i == 0 || completed.contains(_lessons[i - 1]['id']);
-            _lessons[i]['status'] = prevCompleted ? 'in_progress' : 'locked';
-          }
+          _lessons[i]['status'] = statuses[i];
         }
       });
     } catch (_) {}
   }
 
   Future<void> _completeLesson(Map<String, dynamic> lesson) async {
-    final auth = Provider.of<AuthState>(context, listen: false);
-    final childId = auth.user?['id']?.toString() ?? 'default';
-    final prefs = await SharedPreferences.getInstance();
-    final completed = prefs.getStringList('completed_lessons_$childId') ?? ['les_1'];
-
     final id = lesson['id'] as String;
-    final int clientXp = (lesson['xp'] as num?)?.toInt() ?? 20;
-    int awardedXp = clientXp;
+    // In-flight guard: a reopened sheet / second tap must not claim the same lesson twice
+    if (_claimingLessonIds.contains(id)) return;
+    setState(() => _claimingLessonIds.add(id));
 
-    // Send authoritative lesson completion to backend (FF-17: fail-closed on backend rejection)
     try {
-      final res = await ApiClient().post(
-        '/lessons/complete',
-        data: {'lesson_id': id, 'xp': clientXp},
-      );
-      if (res.data != null && res.data is Map) {
-        final int? newXp = (res.data['current_xp'] as num?)?.toInt();
-        final int? newLevel = (res.data['current_level'] as num?)?.toInt();
-        final int? serverAwarded = (res.data['xp_awarded'] as num?)?.toInt();
-        if (serverAwarded != null) {
-          awardedXp = serverAwarded;
+      final auth = Provider.of<AuthState>(context, listen: false);
+      final int clientXp = (lesson['xp'] as num?)?.toInt() ?? 20;
+      int awardedXp = clientXp;
+      bool alreadyCompleted = false;
+
+      // Send authoritative lesson completion to backend (FF-17: fail-closed on backend rejection)
+      try {
+        final res = await ApiClient().post(
+          '/lessons/complete',
+          data: {'lesson_id': id, 'xp': clientXp},
+        );
+        if (res.data != null && res.data is Map) {
+          alreadyCompleted = res.data['already_completed'] == true;
+          final int? newXp = (res.data['current_xp'] as num?)?.toInt();
+          final int? newLevel = (res.data['current_level'] as num?)?.toInt();
+          final int? serverAwarded = (res.data['xp_awarded'] as num?)?.toInt();
+          if (serverAwarded != null) {
+            awardedXp = serverAwarded;
+          }
+          if (newXp != null && !alreadyCompleted) {
+            auth.updateChildStats(xp: newXp, level: newLevel);
+          }
         }
-        if (newXp != null) {
-          auth.updateChildStats(xp: newXp, level: newLevel);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر تسجيل إتمام الدرس. يرجى التحقق من الاتصال بالإنترنت والمحاولة مجدداً.'),
+            backgroundColor: AppTheme.coral,
+          ),
+        );
+        return;
+      }
+
+      // The server now has this lesson as completed (newly or already)
+      final childId = await _resolveChildId(auth);
+      if (childId != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final cacheKey = 'completed_lessons_$childId';
+        final completed = prefs.getStringList(cacheKey) ?? <String>[];
+        if (!completed.contains(id)) {
+          completed.add(id);
+          await prefs.setStringList(cacheKey, completed);
         }
       }
-    } catch (e) {
+
+      await _loadLessonProgress();
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تعذر تسجيل إتمام الدرس. يرجى التحقق من الاتصال بالإنترنت والمحاولة مجدداً.'),
-          backgroundColor: AppTheme.coral,
-        ),
+        alreadyCompleted
+            ? SnackBar(
+                content: Text('لقد أتممت درس "${lesson['title']}" مسبقاً ✅'),
+                backgroundColor: AppTheme.navy,
+              )
+            : SnackBar(
+                content: Text('مبروك! أتممت درس "${lesson['title']}" وحصلت على +$awardedXp XP! 🎓'),
+                backgroundColor: AppTheme.emerald,
+              ),
       );
-      return;
+    } finally {
+      if (mounted) setState(() => _claimingLessonIds.remove(id));
     }
-
-    if (!completed.contains(id)) {
-      completed.add(id);
-      await prefs.setStringList('completed_lessons_$childId', completed);
-    }
-
-    await _loadLessonProgress();
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('مبروك! أتممت درس "${lesson['title']}" وحصلت على +$awardedXp XP! 🎓'),
-        backgroundColor: AppTheme.emerald,
-      ),
-    );
   }
 
   void _openLesson(Map<String, dynamic> lesson) {
@@ -330,6 +374,12 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
           content: Text('الدرس مغلق حالياً 🔒. أنجز الدروس السابقة أولاً لفتحه!'),
           backgroundColor: AppTheme.coral,
         ),
+      );
+      return;
+    }
+    if (_claimingLessonIds.contains(lesson['id'])) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('جاري تسجيل الدرس... ⏳')),
       );
       return;
     }
@@ -379,7 +429,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(ctx);
-                if (!isDone) {
+                if (!isDone && !_claimingLessonIds.contains(lesson['id'])) {
                   _completeLesson(lesson);
                 }
               },
@@ -552,7 +602,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
       if (already) {
         message = 'أحسنت! أتممت لعبة "${game['title']}". لقد حصلت على جائزة هذه اللعبة اليوم مسبقاً! 🌟';
       } else {
-        message = 'إجابة صحيحة يا بطل! 🎉 حصلت على +$xpAwarded XP و +${coinsAwarded.toStringAsFixed(1)} ج.م كوينز!';
+        message = 'إجابة صحيحة يا بطل! 🎉 حصلت على +$xpAwarded XP و +${coinsAwarded.toStringAsFixed(2)} ج.م كوينز!';
         if (leveledUp) {
           message += ' 🚀 مبروك الترقية للمستوى $newLevel!';
         }
@@ -674,6 +724,12 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
                       const SizedBox(width: 8),
                       if (isDone)
                         const Icon(Icons.check_circle, color: AppTheme.emerald, size: 22)
+                      else if (_claimingLessonIds.contains(l['id']))
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.emerald),
+                        )
                       else if (!isLocked)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

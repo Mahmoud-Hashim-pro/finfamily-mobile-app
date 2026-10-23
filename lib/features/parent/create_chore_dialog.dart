@@ -4,6 +4,15 @@ import '../../config/api_config.dart';
 import '../../core/api_client.dart';
 import '../../core/error_handler.dart';
 import '../../widgets/custom_button.dart';
+import '../../widgets/custom_text_field.dart';
+
+/// Chore category sent to POST /missions. It must be one of the backend's ALLOWED_SPENDING_CATEGORIES
+/// (MissionCreate.validate_category) — 'Home' is the MissionCreate default and fits household chores.
+const String kDefaultChoreCategory = 'Home';
+
+/// Parses the reward the parent typed (Arabic-Indic / Persian digits and separators are normalized first).
+@visibleForTesting
+double? parseChoreReward(String raw) => double.tryParse(normalizeArabicDigits(raw.trim()));
 
 class CreateChoreDialog extends StatefulWidget {
   final List<dynamic>? preloadedChildren;
@@ -36,7 +45,7 @@ class _CreateChoreDialogState extends State<CreateChoreDialog> {
 
   List<dynamic> _children = [];
   String? _selectedChildId;
-  final String _selectedCategory = 'cleaning';
+  final String _selectedCategory = kDefaultChoreCategory;
   String _selectedIcon = '🧹';
   String _selectedDueLabel = 'اليوم';
   bool _isLoadingChildren = true;
@@ -105,8 +114,7 @@ class _CreateChoreDialogState extends State<CreateChoreDialog> {
 
   Future<void> _submitChore() async {
     final title = _titleController.text.trim();
-    final rewardText = _rewardController.text.trim();
-    final reward = double.tryParse(rewardText);
+    final reward = parseChoreReward(_rewardController.text);
 
     if (title.isEmpty) {
       setState(() => _errorMessage = 'يرجى كتابة عنوان المهمة المنزلية');
@@ -141,11 +149,8 @@ class _CreateChoreDialogState extends State<CreateChoreDialog> {
     };
 
     try {
-      try {
-        await ApiClient().post('/missions', data: payload);
-      } catch (_) {
-        await ApiClient().post('/family/missions', data: payload);
-      }
+      // Single call: any failure (422/400/5xx/timeout) is shown as-is by the catch below
+      await ApiClient().post(ApiConfig.missionsCreate, data: payload);
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -245,7 +250,7 @@ class _CreateChoreDialogState extends State<CreateChoreDialog> {
                     items: _children.map((c) {
                       final id = c['id']?.toString() ?? '';
                       final name = c['name'] ?? c['full_name'] ?? 'طفل';
-                      final avatar = c['avatar'] ?? '👦';
+                      final avatar = (c['avatar'] ?? c['avatar_url'] ?? '👦').toString();
                       return DropdownMenuItem<String>(
                         value: id,
                         child: Row(

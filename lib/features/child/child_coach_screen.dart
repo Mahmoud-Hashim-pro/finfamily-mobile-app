@@ -4,6 +4,38 @@ import '../../core/api_client.dart';
 import '../../config/api_config.dart';
 import '../../core/error_handler.dart';
 
+/// Backend ChatMessage limits (services/ai_coach.py): message ≤ 1000 chars, each history item ≤ 1000 chars,
+/// total history text ≤ 4000 chars, and the model only reads the last 10 history messages.
+const int kCoachMaxMessageChars = 1000;
+const int kCoachMaxHistoryItems = 10;
+const int kCoachMaxHistoryTotalChars = 4000;
+
+/// Builds the `history` payload for the AI coach from the chat bubbles (oldest → newest).
+/// Client-only bubbles (the static greeting and error bubbles, marked with 'local': 'true') are never sent.
+/// Lengths are counted in code points (runes), the same way the backend's Python validator counts them.
+@visibleForTesting
+List<Map<String, String>> buildCoachHistory(List<Map<String, String>> messages) {
+  final turns = <Map<String, String>>[];
+  for (final m in messages) {
+    if (m['local'] == 'true') continue;
+    var text = (m['text'] ?? '').trim();
+    if (text.isEmpty) continue;
+    if (text.runes.length > kCoachMaxMessageChars) {
+      text = String.fromCharCodes(text.runes.take(kCoachMaxMessageChars));
+    }
+    // 'bot' → 'assistant' so the backend maps the turn to the assistant role
+    turns.add({'role': m['role'] == 'user' ? 'user' : 'assistant', 'content': text});
+  }
+  final recent = turns.length > kCoachMaxHistoryItems
+      ? turns.sublist(turns.length - kCoachMaxHistoryItems)
+      : turns;
+  var total = recent.fold<int>(0, (s, m) => s + m['content']!.runes.length);
+  while (total > kCoachMaxHistoryTotalChars && recent.isNotEmpty) {
+    total -= recent.removeAt(0)['content']!.runes.length;
+  }
+  return recent;
+}
+
 class ChildCoachScreen extends StatefulWidget {
   const ChildCoachScreen({super.key});
 
@@ -20,6 +52,7 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
     {
       'role': 'bot',
       'text': 'أهلاً يا بطل! أنا صديقك الذكي "فطين" 🤖💰.. اسألني أي حاجة عن الفلوس، إزاي تحوش أسرع، أو إزاي تكسب كوينز في الألعاب!',
+      'local': 'true', // static greeting: not part of the conversation history sent to the coach
     },
   ];
 
@@ -36,26 +69,41 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
     super.dispose();
   }
 
-  Future<void> _ask(String question) async {
-    if (question.trim().isEmpty) return;
+  Future<void> _ask(String question, {bool fromInput = false}) async {
+    final q = question.trim();
+    if (q.isEmpty) return;
     if (!mounted) return;
+    // One request at a time: keeps replies in order and the typed draft untouched
+    if (_isTyping) return;
+    if (q.runes.length > kCoachMaxMessageChars) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('سؤالك طويل جداً يا بطل! الحد الأقصى 1000 حرف ✂️')),
+      );
+      return;
+    }
+
+    // Previous turns only (the current question is sent as `message`)
+    final history = buildCoachHistory(_messages);
     setState(() {
-      _messages.add({'role': 'user', 'text': question.trim()});
+      _messages.add({'role': 'user', 'text': q});
       _isTyping = true;
     });
-    _controller.clear();
+    if (fromInput) _controller.clear();
 
     try {
       final res = await ApiClient().post(
         ApiConfig.aiCoach,
-        data: {'message': question.trim()},
+        data: {
+          'message': q,
+          if (history.isNotEmpty) 'history': history,
+        },
       );
       final reply = res.data['reply'] ??
           res.data['response'] ??
           'أنا هنا لمساعدتك دائماً يا بطل! 🌟';
       if (!mounted) return;
       setState(() {
-        _messages.add({'role': 'bot', 'text': reply});
+        _messages.add({'role': 'bot', 'text': reply.toString()});
         _isTyping = false;
       });
     } catch (e) {
@@ -65,6 +113,7 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
         _messages.add({
           'role': 'bot',
           'text': 'عذراً يا بطل! تعذر الاتصال بـ فطين: $errMsg 🤖',
+          'local': 'true', // error bubble: never sent back to the model as history
         });
         _isTyping = false;
       });
@@ -104,7 +153,7 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
                     label: Text(_quickQuestions[index], style: const TextStyle(fontSize: 12)),
                     backgroundColor: Colors.white,
                     side: const BorderSide(color: AppTheme.emerald),
-                    onPressed: () => _ask(_quickQuestions[index]),
+                    onPressed: _isTyping ? null : () => _ask(_quickQuestions[index]),
                   );
                 },
               ),
@@ -180,7 +229,9 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
                   Expanded(
                     child: TextField(
                       controller: _controller,
+                      maxLength: kCoachMaxMessageChars,
                       decoration: InputDecoration(
+                        counterText: '',
                         hintText: 'اسأل فطين أي سؤال...',
                         hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 13),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -189,7 +240,7 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
                           borderSide: const BorderSide(color: AppTheme.cardBorder),
                         ),
                       ),
-                      onSubmitted: _ask,
+                      onSubmitted: (v) => _ask(v, fromInput: true),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -198,7 +249,7 @@ class _ChildCoachScreenState extends State<ChildCoachScreen> {
                     backgroundColor: AppTheme.emerald,
                     child: IconButton(
                       icon: const Icon(Icons.send, color: Colors.white, size: 20),
-                      onPressed: () => _ask(_controller.text),
+                      onPressed: _isTyping ? null : () => _ask(_controller.text, fromInput: true),
                     ),
                   ),
                 ],

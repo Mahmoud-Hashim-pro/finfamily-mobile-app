@@ -5,6 +5,7 @@ import '../../config/theme.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../parent/parent_nav_shell.dart';
+import 'auth_input_utils.dart';
 
 class MfaScreen extends StatefulWidget {
   const MfaScreen({super.key});
@@ -23,8 +24,9 @@ class _MfaScreenState extends State<MfaScreen> {
   }
 
   Future<void> _handleVerify() async {
-    final code = _codeController.text.trim();
-    if (code.length != 6 || int.tryParse(code) == null) {
+    // Arabic-Indic digits from Arabic keyboards are mapped to ASCII before validating/sending
+    final code = normalizeNumericCode(_codeController.text);
+    if (!isSixDigitCode(code)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('رمز التحقق يتكون من 6 أرقام'),
@@ -52,115 +54,39 @@ class _MfaScreenState extends State<MfaScreen> {
           backgroundColor: AppTheme.coral,
         ),
       );
+      // The MFA challenge expired (AuthState dropped it): no code can succeed here, go back to the login form
+      if (auth.status == AuthStatus.unauthenticated) Navigator.maybePop(context);
     }
   }
 
-  void _showRecoveryDialog() {
-    final recoveryController = TextEditingController();
-    bool isSubmitting = false;
-    String? dialogError;
-
-    showDialog(
+  Future<void> _showRecoveryDialog() async {
+    // The dialog owns its controller (disposed in its State) and cannot be dismissed while
+    // a request is in flight; it pops `true` on success and the screen navigates here.
+    final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('كود استعادة الطوارئ 🔐', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'أدخل أحد أكواد الاستعادة الاحتياطية التي تم إنشاؤها لحسابك بالصيغة XXXX-XXXX',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: recoveryController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(
-                  hintText: 'ABCD-1234',
-                  labelText: 'كود الاستعادة (XXXX-XXXX)',
-                  filled: true,
-                  fillColor: AppTheme.backgroundLight,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              if (dialogError != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  dialogError!,
-                  style: const TextStyle(color: AppTheme.coral, fontSize: 12),
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () {
-                      recoveryController.dispose();
-                      Navigator.pop(ctx);
-                    },
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () async {
-                      final rawCode = recoveryController.text.trim().toUpperCase();
-                      final recoveryRegex = RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}$');
-
-                      if (!recoveryRegex.hasMatch(rawCode)) {
-                        setDialogState(() {
-                          dialogError = 'صيغة كود الاستعادة غير صحيحة، يجب أن يكون مثل: ABCD-1234';
-                        });
-                        return;
-                      }
-
-                      setDialogState(() {
-                        isSubmitting = true;
-                        dialogError = null;
-                      });
-
-                      final auth = Provider.of<AuthState>(context, listen: false);
-                      final success = await auth.loginParentWithRecovery(rawCode);
-
-                      recoveryController.dispose();
-
-                      if (!ctx.mounted) return;
-                      Navigator.pop(ctx);
-
-                      if (!mounted) return;
-                      if (success) {
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(builder: (_) => const ParentNavShell()),
-                          (route) => false,
-                        );
-                      } else if (auth.errorMessage != null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(auth.errorMessage!),
-                            backgroundColor: AppTheme.coral,
-                          ),
-                        );
-                      }
-                    },
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.navy),
-              child: isSubmitting
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('دخول بكود الاستعادة'),
-            ),
-          ],
-        ),
-      ),
+      barrierDismissible: false,
+      builder: (_) => const _RecoveryCodeDialog(),
     );
+
+    if (!mounted) return;
+    final auth = Provider.of<AuthState>(context, listen: false);
+    // ok == null: the dialog route was removed externally; still honour a completed login
+    if (ok == true || (ok == null && auth.status == AuthStatus.authenticated)) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const ParentNavShell()),
+        (route) => false,
+      );
+    } else if (auth.status == AuthStatus.unauthenticated) {
+      // The MFA challenge expired while the dialog was open: explain and return to the login form
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(auth.errorMessage ?? 'انتهت مهلة التحقق الثنائي، يرجى تسجيل الدخول مجدداً'),
+          backgroundColor: AppTheme.coral,
+        ),
+      );
+      Navigator.maybePop(context);
+    }
   }
 
   @override
@@ -235,6 +161,119 @@ class _MfaScreenState extends State<MfaScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Recovery-code dialog: accepts XXXX-XXXX-XXXX-XXXX (and legacy XXXX-XXXX), normalized before sending.
+class _RecoveryCodeDialog extends StatefulWidget {
+  const _RecoveryCodeDialog();
+
+  @override
+  State<_RecoveryCodeDialog> createState() => _RecoveryCodeDialogState();
+}
+
+class _RecoveryCodeDialogState extends State<_RecoveryCodeDialog> {
+  final _recoveryController = TextEditingController();
+  bool _isSubmitting = false;
+  String? _dialogError;
+
+  @override
+  void dispose() {
+    _recoveryController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    // Uppercase + strip spaces/dashes: 'abcd-efgh 2345-6789' → 'ABCDEFGH23456789' (16 chars fit /auth/mfa/verify)
+    final rawCode = normalizeRecoveryCode(_recoveryController.text);
+    if (!isValidRecoveryCode(rawCode)) {
+      setState(() {
+        _dialogError = 'صيغة كود الاستعادة غير صحيحة، يجب أن يكون مثل: ABCD-EFGH-2345-6789';
+      });
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _dialogError = null;
+    });
+
+    final auth = Provider.of<AuthState>(context, listen: false);
+    final success = await auth.loginParentWithRecovery(rawCode);
+
+    if (!mounted) return;
+    if (success) {
+      Navigator.pop(context, true);
+      return;
+    }
+    if (auth.status == AuthStatus.unauthenticated) {
+      // Expired challenge: the screen shows the message and returns to login
+      Navigator.pop(context, false);
+      return;
+    }
+    setState(() {
+      _isSubmitting = false;
+      _dialogError = auth.errorMessage ?? 'تعذر التحقق من كود الاستعادة، حاول مرة أخرى';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_isSubmitting,
+      child: AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('كود استعادة الطوارئ 🔐', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'أدخل أحد أكواد الاستعادة الاحتياطية التي تم إنشاؤها لحسابك بالصيغة XXXX-XXXX-XXXX-XXXX',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _recoveryController,
+              textCapitalization: TextCapitalization.characters,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                hintText: 'ABCD-EFGH-2345-6789',
+                labelText: 'كود الاستعادة (XXXX-XXXX-XXXX-XXXX)',
+                filled: true,
+                fillColor: AppTheme.backgroundLight,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            if (_dialogError != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _dialogError!,
+                style: const TextStyle(color: AppTheme.coral, fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: _isSubmitting ? null : () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: _isSubmitting ? null : _submit,
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.navy),
+            child: _isSubmitting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('دخول بكود الاستعادة'),
+          ),
+        ],
       ),
     );
   }

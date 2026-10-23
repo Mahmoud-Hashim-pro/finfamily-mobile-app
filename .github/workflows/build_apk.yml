@@ -91,6 +91,17 @@ jobs:
             echo "ERROR: Git Tag 'v$TAG' does not match pubspec.yaml version '$PUBSPEC_VER'!" >&2
             exit 1
           fi
+          if ! echo "$PUBSPEC_BUILD" | grep -Eq '^[0-9]+$'; then
+            echo "ERROR: pubspec.yaml build number '$PUBSPEC_BUILD' is missing or not numeric (expected version: X.Y.Z+N)!" >&2
+            exit 1
+          fi
+          # The in-app updater compares against ApiConfig; its defaults must never drift from pubspec.yaml
+          CFG_VER=$(grep -o "'APP_VERSION', defaultValue: '[^']*'" lib/config/api_config.dart | sed "s/.*defaultValue: '\([^']*\)'/\1/")
+          CFG_BUILD=$(grep -o "'APP_BUILD_NUMBER', defaultValue: [0-9]*" lib/config/api_config.dart | sed 's/.*defaultValue: //')
+          if [ "$CFG_VER" != "$PUBSPEC_VER" ] || [ "$CFG_BUILD" != "$PUBSPEC_BUILD" ]; then
+            echo "ERROR: ApiConfig defaults ($CFG_VER+$CFG_BUILD) do not match pubspec.yaml ($PUBSPEC_VER+$PUBSPEC_BUILD)!" >&2
+            exit 1
+          fi
           echo "PUBSPEC_VERSION=$PUBSPEC_VER" >> $GITHUB_ENV
           echo "PUBSPEC_BUILD=$PUBSPEC_BUILD" >> $GITHUB_ENV
           echo "Tag and pubspec.yaml version match verified."
@@ -116,7 +127,8 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           CI: "true"
-        run: flutter build apk --release
+        # Bake the real pubspec version into the binary so UpdateChecker never reports a stale version
+        run: flutter build apk --release --dart-define=APP_VERSION=${PUBSPEC_VERSION} --dart-define=APP_BUILD_NUMBER=${PUBSPEC_BUILD}
 
       - name: Clean Keystore File
         if: always()

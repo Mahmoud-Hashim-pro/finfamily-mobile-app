@@ -4,7 +4,26 @@ import '../../core/api_client.dart';
 import '../../config/api_config.dart';
 import '../../core/error_handler.dart';
 import '../../widgets/custom_button.dart';
+import '../../widgets/custom_text_field.dart';
 import 'family_members_screen.dart';
+
+/// Prefills the custom-limit field with the exact stored value (150 → "150", 150.75 → "150.75", 150.5 → "150.5"),
+/// so confirming the dialog unchanged never truncates the limit.
+@visibleForTesting
+String formatLimitInput(double v) {
+  if (v == v.roundToDouble()) return v.toInt().toString();
+  var s = v.toStringAsFixed(2);
+  if (s.endsWith('0')) s = s.substring(0, s.length - 1);
+  return s;
+}
+
+/// Parses a custom limit typed by the parent (Arabic-Indic digits / separators normalized). Null when invalid.
+@visibleForTesting
+double? parseLimitInput(String raw) {
+  final parsed = double.tryParse(normalizeArabicDigits(raw.trim()));
+  if (parsed == null || !parsed.isFinite || parsed < 0) return null;
+  return parsed;
+}
 
 class SpendingLimitsScreen extends StatefulWidget {
   final String? initialChildId;
@@ -66,7 +85,11 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
       _children = raw;
 
       if (_children.isNotEmpty) {
-        _selectedChildId = widget.initialChildId ?? _children.first['id']?.toString();
+        // Keep the requested child (or the current selection on retry) only if it is still in the family
+        final wanted = _selectedChildId ?? widget.initialChildId;
+        _selectedChildId = (wanted != null && _children.any((c) => c['id']?.toString() == wanted))
+            ? wanted
+            : _children.first['id']?.toString();
         await _loadChildWallet(_selectedChildId!);
       } else {
         if (!mounted) return;
@@ -187,9 +210,10 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
     required ValueChanged<double?> onSave,
   }) {
     final controller = TextEditingController(
-      text: currentValue != null ? currentValue.toInt().toString() : '',
+      text: currentValue != null ? formatLimitInput(currentValue) : '',
     );
     bool isUnlimited = currentValue == null;
+    String? inputError;
 
     showDialog(
       context: context,
@@ -211,6 +235,7 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
                     onChanged: (val) {
                       setDialogState(() {
                         isUnlimited = val ?? false;
+                        inputError = null;
                         if (isUnlimited) controller.clear();
                       });
                     },
@@ -222,9 +247,13 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
                     TextField(
                       controller: controller,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) {
+                        if (inputError != null) setDialogState(() => inputError = null);
+                      },
                       decoration: InputDecoration(
                         hintText: 'مثال: 150 أو 0 لتعطيل الصرف',
                         suffixText: 'ج.م',
+                        errorText: inputError,
                         filled: true,
                         fillColor: AppTheme.backgroundLight,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -239,20 +268,30 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
                           onPressed: () {
                             setDialogState(() {
                               controller.text = '0';
+                              inputError = null;
                             });
                           },
                         ),
                         ActionChip(
                           label: const Text('50'),
-                          onPressed: () => setDialogState(() => controller.text = '50'),
+                          onPressed: () => setDialogState(() {
+                            controller.text = '50';
+                            inputError = null;
+                          }),
                         ),
                         ActionChip(
                           label: const Text('200'),
-                          onPressed: () => setDialogState(() => controller.text = '200'),
+                          onPressed: () => setDialogState(() {
+                            controller.text = '200';
+                            inputError = null;
+                          }),
                         ),
                         ActionChip(
                           label: const Text('500'),
-                          onPressed: () => setDialogState(() => controller.text = '500'),
+                          onPressed: () => setDialogState(() {
+                            controller.text = '500';
+                            inputError = null;
+                          }),
                         ),
                       ],
                     ),
@@ -270,12 +309,13 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
                   if (isUnlimited) {
                     onSave(null);
                   } else {
-                    final parsed = double.tryParse(controller.text.trim());
-                    if (parsed != null && parsed >= 0) {
-                      onSave(parsed);
-                    } else {
+                    final parsed = parseLimitInput(controller.text);
+                    if (parsed == null) {
+                      // Never ignore Confirm silently: tell the parent what is wrong
+                      setDialogState(() => inputError = 'يرجى إدخال قيمة صحيحة (0 أو أكثر)');
                       return;
                     }
+                    onSave(parsed);
                   }
                   Navigator.pop(ctx);
                 },
@@ -398,7 +438,7 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
                                         ),
                                         child: Row(
                                           children: [
-                                            Text(c['avatar'] ?? '👦'),
+                                            Text((c['avatar'] ?? c['avatar_url'] ?? '👦').toString()),
                                             const SizedBox(width: 6),
                                             Text(
                                               c['full_name'] ?? 'ابن',
@@ -579,7 +619,7 @@ class _SpendingLimitsScreenState extends State<SpendingLimitsScreen> {
       displayValue = '0 ج.م (معطل)';
       valueColor = AppTheme.coral;
     } else {
-      displayValue = '${value.toInt()} ج.م';
+      displayValue = '${value.toStringAsFixed(2)} ج.م';
     }
 
     return Container(

@@ -49,6 +49,14 @@ class UpdateChecker {
     }
   }
 
+  /// True when the installed version is strictly below the server-declared minimum supported version.
+  /// Missing or empty minimums never force an update (fail open, like the rest of the parsing).
+  static bool isBelowMinimumSupported(String? minSupported, String current) {
+    final min = minSupported?.trim() ?? '';
+    if (min.isEmpty) return false;
+    return isNewerVersion(min, current, 0, 0);
+  }
+
   /// Strictly validates that the download URL uses HTTPS and belongs to a trusted host.
   /// Rejects plaintext HTTP and spoofed subdomains.
   static bool isAllowedDownloadUrl(String url) {
@@ -101,7 +109,10 @@ class UpdateChecker {
           'https://github.com/Mahmoud-Hashim-pro/finfamily-mobile-app/releases/latest/download/app-release.apk').toString();
       final releaseNotes = (data['release_notes'] ??
           'يتضمن هذا التحديث تحسينات أمنية وإصلاحات وتحديثات جديدة.').toString();
-      final isMandatory = (data['is_mandatory'] as bool?) ?? false;
+      // Clients below min_supported_version must update even when the release itself is optional
+      final minSupported = data['min_supported_version']?.toString();
+      final isMandatory = ((data['is_mandatory'] as bool?) ?? false) ||
+          isBelowMinimumSupported(minSupported, currentVersion);
       final expectedSize = (data['file_size'] as num?)?.toInt();
       final expectedSha256 = (data['sha256'] ?? data['file_hash'])?.toString().trim();
 

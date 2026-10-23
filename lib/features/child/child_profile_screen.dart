@@ -7,7 +7,10 @@ import '../../core/api_client.dart';
 import '../auth/role_select_screen.dart';
 
 class ChildProfileScreen extends StatefulWidget {
-  const ChildProfileScreen({super.key});
+  const ChildProfileScreen({super.key, this.refreshSignal});
+
+  /// Bumped by ChildNavShell when this tab is reopened, so the IndexedStack tab refetches.
+  final ValueNotifier<int>? refreshSignal;
 
   @override
   State<ChildProfileScreen> createState() => _ChildProfileScreenState();
@@ -17,64 +20,64 @@ class _ChildProfileScreenState extends State<ChildProfileScreen> {
   bool _isLoading = true;
   String? _errorMessage;
   Map<String, dynamic>? _walletData;
-  List<dynamic> _missions = [];
   List<Map<String, dynamic>> _badges = [];
+  bool _badgesError = false;
 
   @override
   void initState() {
     super.initState();
+    widget.refreshSignal?.addListener(_handleRefresh);
+    // checkAuth has just fetched /auth/me, so skip the duplicate user refresh on first load
+    _loadProfileData(refreshUser: false);
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal?.removeListener(_handleRefresh);
+    super.dispose();
+  }
+
+  void _handleRefresh() {
     _loadProfileData();
   }
 
-  Future<void> _loadProfileData() async {
+  Future<void> _loadProfileData({bool refreshUser = true}) async {
     if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
+    // XP / level / streak come from AuthState: refresh them alongside the wallet fetch
+    final Future<void> userRefresh = refreshUser
+        ? Provider.of<AuthState>(context, listen: false).refreshCurrentUser()
+        : Future<void>.value();
+
     try {
       final client = ApiClient();
-      final auth = Provider.of<AuthState>(context, listen: false);
-      final childId = auth.user?['id']?.toString() ?? '';
 
-      final responses = await Future.wait([
-        client.get(ApiConfig.walletMe),
-        client.get(ApiConfig.missionsMine).catchError((_) => null as dynamic),
-      ]);
+      // Only the wallet is required. (The optional /missions/mine request only fed the removed
+      // client-side badge heuristics; its broken catchError turned any missions failure into a full error.)
+      final walletRes = await client.get(ApiConfig.walletMe);
 
-      // Attempt to load badges dynamically from server (BUG-044)
-      List<dynamic> rawBadges = [];
+      // Badges come only from the server (BUG-044); on failure keep the last server list
+      List<dynamic>? rawBadges;
       try {
-        final bRes = await client.get('/badges/mine');
+        final bRes = await client.get(ApiConfig.badgesMine);
         if (bRes.data is List) {
           rawBadges = bRes.data;
         } else if (bRes.data is Map && bRes.data['badges'] is List) {
           rawBadges = bRes.data['badges'];
         }
-      } catch (_) {
-        try {
-          if (childId.isNotEmpty) {
-            final bRes = await client.get('/api/family/children/$childId/badges');
-            if (bRes.data is List) {
-              rawBadges = bRes.data;
-            } else if (bRes.data is Map && bRes.data['badges'] is List) {
-              rawBadges = bRes.data['badges'];
-            }
-          }
-        } catch (_) {}
-      }
+      } catch (_) {}
 
       if (!mounted) return;
       setState(() {
-        if (responses[0].data != null) {
-          _walletData = responses[0].data;
-        }
-        if (responses[1].data != null) {
-          _missions = responses[1].data is List ? responses[1].data : [];
+        if (walletRes.data != null) {
+          _walletData = walletRes.data;
         }
 
-        if (rawBadges.isNotEmpty) {
+        if (rawBadges != null) {
           _badges = rawBadges.map<Map<String, dynamic>>((b) {
             return {
               'id': b['id'] ?? '',
@@ -84,55 +87,8 @@ class _ChildProfileScreenState extends State<ChildProfileScreen> {
               'desc': b['desc'] ?? b['description'] ?? '',
             };
           }).toList();
-        } else {
-          // Compute default badges based on user state
-          final double savingsBalance = (_walletData?['savings_balance'] ?? 0.0).toDouble();
-          final double totalBalance = (_walletData?['balance'] ?? 0.0).toDouble();
-          final user = auth.user ?? {};
-          final int level = user['level'] is int ? user['level'] : int.tryParse('${user['level']}') ?? 1;
-          final int xp = user['xp'] is int ? user['xp'] : int.tryParse('${user['xp']}') ?? 0;
-          final List<dynamic> goals = _walletData?['savings_goals'] ?? [];
-          final int completedMissions = _missions.where((m) => m['status'] == 'completed' || m['status'] == 'approved').length;
-
-          _badges = [
-            {
-              'name': 'المدخر الذكي',
-              'icon': '🐷',
-              'earned': savingsBalance > 0 || totalBalance >= 50,
-              'desc': 'بدأ الادخار وجمع رصيد إيجابي',
-            },
-            {
-              'name': 'بطل الميزانية',
-              'icon': '🛡️',
-              'earned': (_walletData?['daily_limit'] ?? 0) > 0,
-              'desc': 'يلتزم بحدود الصرف اليومية',
-            },
-            {
-              'name': 'المستثمر الصغير',
-              'icon': '📈',
-              'earned': level >= 2 || xp >= 100,
-              'desc': 'تخطى المستوى الأول وحصل خبرة',
-            },
-            {
-              'name': 'قاهر الأهداف',
-              'icon': '🎯',
-              'earned': goals.isNotEmpty,
-              'desc': 'أنشأ هدف ادخار في خطته',
-            },
-            {
-              'name': 'بطل المهام',
-              'icon': '🏅',
-              'earned': completedMissions > 0,
-              'desc': 'أنجز مهام بنجاح وحصل مكافآت',
-            },
-            {
-              'name': 'حامي الكارت',
-              'icon': '💳',
-              'earned': _walletData?['card_status'] == 'active',
-              'desc': 'يمتلك كارت ميزة مفعل وذكي',
-            },
-          ];
         }
+        _badgesError = rawBadges == null;
 
         _isLoading = false;
       });
@@ -144,6 +100,8 @@ class _ChildProfileScreenState extends State<ChildProfileScreen> {
         });
       }
     }
+    // refreshCurrentUser never throws (keeps the old state on failure)
+    await userRefresh;
   }
 
   @override
@@ -152,7 +110,7 @@ class _ChildProfileScreenState extends State<ChildProfileScreen> {
     final user = auth.user ?? {};
 
     final String name = user['full_name'] ?? user['name'] ?? 'البطل المالي';
-    final String avatar = user['avatar'] ?? '👦';
+    final String avatar = (user['avatar'] ?? user['avatar_url'] ?? '👦').toString();
     final int level = user['level'] is int ? user['level'] : int.tryParse('${user['level']}') ?? 1;
     final int xp = user['xp'] is int ? user['xp'] : int.tryParse('${user['xp']}') ?? 0;
     final int streak = user['streak'] is int ? user['streak'] : int.tryParse('${user['streak']}') ?? 1;
@@ -358,7 +316,7 @@ class _ChildProfileScreenState extends State<ChildProfileScreen> {
                                   const Text('رصيد الكارت المتاح', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                                   const SizedBox(height: 4),
                                   Text(
-                                    '${totalBalance.toStringAsFixed(1)} ج.م',
+                                    '${totalBalance.toStringAsFixed(2)} ج.م',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w900,
                                       fontSize: 16,
@@ -384,7 +342,7 @@ class _ChildProfileScreenState extends State<ChildProfileScreen> {
                                   const Text('محفوظ في الأهداف', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                                   const SizedBox(height: 4),
                                   Text(
-                                    '${savingsBalance.toStringAsFixed(1)} ج.م',
+                                    '${savingsBalance.toStringAsFixed(2)} ج.م',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w900,
                                       fontSize: 16,
@@ -425,6 +383,22 @@ class _ChildProfileScreenState extends State<ChildProfileScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
+
+                if (_badgesError && _badges.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.coral.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'تعذر تحميل الأوسمة، اسحب للتحديث 🔄',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: AppTheme.coral, fontWeight: FontWeight.bold),
+                    ),
+                  ),
 
                 GridView.builder(
                   shrinkWrap: true,

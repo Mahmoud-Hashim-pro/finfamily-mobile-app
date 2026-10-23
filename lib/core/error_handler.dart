@@ -14,6 +14,7 @@ class ApiErrorHandler {
       }
 
       final response = error.response;
+      final statusCode = response?.statusCode;
       if (response != null && response.data != null) {
         final data = response.data;
 
@@ -47,19 +48,35 @@ class ApiErrorHandler {
             return messages.join('\n');
           }
         }
+      }
 
-        if (response.statusCode == 429) {
+      // Status-code mapping also covers empty / plain-text bodies (e.g. Vercel 502/504 pages)
+      if (statusCode != null) {
+        if (statusCode == 429) {
           return 'تم تجاوز الحد المسموح من المحاولات، يرجى الانتظار قليلاً';
-        } else if (response.statusCode == 401) {
+        } else if (statusCode == 401) {
           return 'انتهت جلستك أو كلمة المرور / رمز PIN غير صحيح';
-        } else if (response.statusCode == 403) {
+        } else if (statusCode == 403) {
           return 'ليس لديك صلاحية للوصول إلى هذا المحتوى';
-        } else if (response.statusCode == 404) {
+        } else if (statusCode == 404) {
           return 'العنصر المطلوب غير موجود أو غير مسجل';
-        } else if (response.statusCode == 500) {
+        } else if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
+          return 'الخادم مشغول حالياً أو استغرق وقتاً أطول من المتوقع، يرجى المحاولة بعد قليل';
+        } else if (statusCode >= 500) {
           return 'حدث خطأ في الخادم، يرجى المحاولة لاحقاً';
+        } else if (statusCode >= 400) {
+          return 'تعذر إتمام الطلب، يرجى المحاولة مرة أخرى';
         }
       }
+
+      // Never show the raw English DioException dump to users
+      if (error.type == DioExceptionType.cancel) {
+        return 'تم إلغاء الطلب';
+      }
+      if (error.type == DioExceptionType.badCertificate) {
+        return 'تعذر التحقق من أمان الاتصال بالخادم';
+      }
+      return 'حدث خطأ غير متوقع أثناء الاتصال بالخادم، يرجى المحاولة مرة أخرى';
     }
 
     final raw = error.toString().replaceAll('Exception:', '').trim();
@@ -69,9 +86,30 @@ class ApiErrorHandler {
   static String _translateDetail(String detail) {
     final lower = detail.toLowerCase().trim();
     if (lower.contains('not authenticated')) return 'يرجى تسجيل الدخول أولاً';
+    // MFA challenge (temp token) expired: the user must restart login, codes can't succeed anymore
+    if (lower.contains('expired temporary session') ||
+        lower.contains('expired temporary admin session') ||
+        lower.contains('invalid mfa token') ||
+        lower.contains('invalid admin mfa challenge token')) {
+      return 'انتهت مهلة التحقق الثنائي، يرجى تسجيل الدخول مجدداً';
+    }
+    // C13: Google identity proof (Google-only parents). Checked before the session-expiry block
+    // because the verifier text may read 'Invalid Google ID token: Google ID token has expired'.
+    if (lower.contains('google authentication does not match') || lower.contains('identity mismatch')) {
+      return 'حساب Google الذي اخترته لا يطابق حسابك في FinFamily، يرجى اختيار نفس الحساب';
+    }
+    if (lower.contains('google re-authentication is required')) {
+      return 'يرجى تأكيد هويتك عبر Google للمتابعة';
+    }
+    if (lower.contains('invalid google') || lower.contains('google authentication failed')) {
+      return 'تعذر التحقق من حساب Google، يرجى المحاولة مرة أخرى';
+    }
     if (lower.contains('token expired') ||
         lower.contains('signature has expired') ||
-        lower.contains('token has expired')) {
+        lower.contains('token has expired') ||
+        lower.contains('invalid or expired token') ||
+        lower.contains('expired admin session token') ||
+        lower.contains('token has been revoked')) {
       return 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً';
     }
     if (lower.contains('invalid credentials') ||
@@ -85,7 +123,7 @@ class ApiErrorHandler {
     if (lower.contains('family not found') || lower.contains('family code not found')) {
       return 'كود العائلة غير صحيح أو غير مسجل';
     }
-    if (lower.contains('too many attempts')) {
+    if (lower.contains('too many attempts') || lower.contains('too many failed authentication code attempts')) {
       return 'تم حظر المحاولات مؤقتاً بسبب تكرار الخطأ، يرجى الانتظار والمحاولة لاحقاً';
     }
     if (lower.contains('mfa verification required') ||
@@ -102,8 +140,12 @@ class ApiErrorHandler {
       return 'الرصيد المتاح غير كافٍ لإتمام العملية';
     }
     if (lower.contains('spending limit exceeded')) return 'تم تجاوز حد الصرف المسموح به';
-    if (lower.contains('deposit exceeds goal target')) return 'المبلغ يتجاوز المبلغ المطلوب للهدف';
-    if (lower.contains('reset link is invalid') || lower.contains('expired')) {
+    if (lower.contains('deposit exceeds savings goal target') ||
+        lower.contains('deposit exceeds goal target')) {
+      return 'المبلغ يتجاوز المبلغ المطلوب للهدف';
+    }
+    if (lower.contains('not enough savings')) return 'المبلغ المحوّش في الهدف غير كافٍ للسحب';
+    if (lower.contains('reset link') || lower.contains('reset token')) {
       return 'رابط أو رمز إعادة التعيين غير صالح أو منتهي الصلاحية';
     }
     if (lower.contains('field required')) return 'هذا الحقل مطلوب';
@@ -120,6 +162,8 @@ class ApiErrorHandler {
       return 'هذا الحساب غير مسجل بعد في FinFamily. يرجى إنشاء حساب جديد.';
     }
     if (lower.contains('string should have at least')) return 'النص قصير جداً، يرجى إدخال المزيد من الأحرف';
+    if (lower.contains('string should have at most')) return 'النص طويل جداً، يرجى تقصير الرسالة';
+    if (lower.contains('proof_url must be an http')) return 'رابط الإثبات لازم يكون رابط صحيح يبدأ بـ https://';
     return detail;
   }
 }

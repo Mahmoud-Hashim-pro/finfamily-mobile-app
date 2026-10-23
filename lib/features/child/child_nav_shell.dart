@@ -17,6 +17,12 @@ class ChildNavShell extends StatefulWidget {
 class _ChildNavShellState extends State<ChildNavShell> {
   int _currentIndex = 0;
 
+  // IndexedStack keeps every tab alive, so tabs showing wallet data refetch when reopened
+  final ValueNotifier<int> _homeRefresh = ValueNotifier(0);
+  final ValueNotifier<int> _meezaRefresh = ValueNotifier(0);
+  final ValueNotifier<int> _walletRefresh = ValueNotifier(0);
+  final ValueNotifier<int> _profileRefresh = ValueNotifier(0);
+
   @override
   void initState() {
     super.initState();
@@ -25,20 +31,47 @@ class _ChildNavShellState extends State<ChildNavShell> {
     });
   }
 
-  final List<Widget> _screens = const [
-    ChildHomeScreen(),
-    MeezaCardScreen(),
-    WalletScreen(),
-    LearnScreen(),
-    ChildProfileScreen(),
-  ];
+  @override
+  void dispose() {
+    _homeRefresh.dispose();
+    _meezaRefresh.dispose();
+    _walletRefresh.dispose();
+    _profileRefresh.dispose();
+    super.dispose();
+  }
+
+  void _onTabSelected(int index) {
+    if (index != _currentIndex) {
+      switch (index) {
+        case 0:
+          _homeRefresh.value++;
+          break;
+        case 1:
+          _meezaRefresh.value++;
+          break;
+        case 2:
+          _walletRefresh.value++;
+          break;
+        case 4:
+          _profileRefresh.value++;
+          break;
+      }
+    }
+    setState(() => _currentIndex = index);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          ChildHomeScreen(refreshSignal: _homeRefresh),
+          MeezaCardScreen(refreshSignal: _meezaRefresh),
+          WalletScreen(refreshSignal: _walletRefresh),
+          const LearnScreen(),
+          ChildProfileScreen(refreshSignal: _profileRefresh),
+        ],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -56,7 +89,7 @@ class _ChildNavShellState extends State<ChildNavShell> {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: BottomNavigationBar(
               currentIndex: _currentIndex,
-              onTap: (index) => setState(() => _currentIndex = index),
+              onTap: _onTabSelected,
               backgroundColor: Colors.transparent,
               elevation: 0,
               type: BottomNavigationBarType.fixed,

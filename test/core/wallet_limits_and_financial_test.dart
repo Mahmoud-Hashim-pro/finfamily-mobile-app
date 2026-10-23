@@ -52,32 +52,29 @@ void main() {
       expect(wallet.blockedCategories, isEmpty);
     });
 
-    test('computes remaining daily budget and limit breach correctly', () {
-      final wallet = WalletModel(
-        id: 'w_test',
-        userId: 'u_test',
-        balance: 500.0,
-        dailyLimit: 100.0,
-        spentToday: 75.0,
-      );
+    test('parses integer JSON amounts and non-string ids into typed wallet fields', () {
+      // The backend may serialize whole amounts as ints and ids as numbers
+      final wallet = WalletModel.fromJson({
+        'id': 42,
+        'user_id': 7,
+        'balance': 500,
+        'savings_balance': 0,
+        'daily_limit': 100,
+        'spent_today': 75,
+        'spent_this_week': 120,
+        'spent_this_month': 300,
+        'blocked_categories': ['gaming', 3],
+      });
 
-      final remainingDaily = wallet.dailyLimit! - wallet.spentToday;
-      final utilization = wallet.spentToday / wallet.dailyLimit!;
-
-      expect(remainingDaily, equals(25.0));
-      expect(utilization, equals(0.75));
-      expect(remainingDaily > 0, isTrue);
-
-      final overspentWallet = WalletModel(
-        id: 'w_test_over',
-        userId: 'u_test',
-        balance: 500.0,
-        dailyLimit: 50.0,
-        spentToday: 60.0,
-      );
-
-      final isLimitExceeded = overspentWallet.spentToday > overspentWallet.dailyLimit!;
-      expect(isLimitExceeded, isTrue);
+      expect(wallet.id, equals('42'));
+      expect(wallet.userId, equals('7'));
+      expect(wallet.balance, isA<double>());
+      expect(wallet.balance, equals(500.0));
+      expect(wallet.dailyLimit, equals(100.0));
+      expect(wallet.spentToday, equals(75.0));
+      expect(wallet.spentThisWeek, equals(120.0));
+      expect(wallet.spentThisMonth, equals(300.0));
+      expect(wallet.blockedCategories, equals(['gaming', '3']));
     });
   });
 }

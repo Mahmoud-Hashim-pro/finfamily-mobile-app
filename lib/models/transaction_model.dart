@@ -1,3 +1,4 @@
+import '../core/date_utils.dart';
 
 class TransactionModel {
   final String id;
@@ -67,11 +68,15 @@ class TransactionModel {
       );
     }
 
-    // Parse transaction date.
+    // Parse transaction date (backend sends naive UTC; shown in device local time).
     final rawDate = json['created_date'] ?? json['date'];
-    final parsedDate = rawDate != null
-        ? DateTime.tryParse(rawDate.toString())
-        : null;
+    final parsedDate = parseServerDateTime(rawDate);
+
+    if (parsedDate == null) {
+      throw const FormatException(
+        'TransactionModel: missing or invalid required field "created_date"',
+      );
+    }
 
     return TransactionModel(
       id: rawId,
@@ -83,7 +88,7 @@ class TransactionModel {
       amount: amount,
       direction: rawDirection,
       type: json['type']?.toString() ?? 'card',
-      date: parsedDate ?? DateTime.now(),
+      date: parsedDate,
       status: json['status']?.toString() ?? 'completed',
       merchant: json['merchant']?.toString(),
       location: json['location']?.toString(),

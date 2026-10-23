@@ -4,13 +4,17 @@ import '../../config/theme.dart';
 import '../../core/auth_state.dart';
 import '../../core/api_client.dart';
 import '../../core/error_handler.dart';
+import '../../config/api_config.dart';
 import 'missions_screen.dart';
 import 'goals_screen.dart';
 import 'child_coach_screen.dart';
 import 'leaderboard_screen.dart';
 
 class ChildHomeScreen extends StatefulWidget {
-  const ChildHomeScreen({super.key});
+  const ChildHomeScreen({super.key, this.refreshSignal});
+
+  /// Bumped by ChildNavShell when this tab is reopened, so the IndexedStack tab refetches.
+  final ValueNotifier<int>? refreshSignal;
 
   @override
   State<ChildHomeScreen> createState() => _ChildHomeScreenState();
@@ -26,20 +30,41 @@ class _ChildHomeScreenState extends State<ChildHomeScreen> {
   @override
   void initState() {
     super.initState();
+    widget.refreshSignal?.addListener(_handleRefresh);
+    // checkAuth has just fetched /auth/me, so skip the duplicate user refresh on first load
+    _loadData(refreshUser: false);
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal?.removeListener(_handleRefresh);
+    super.dispose();
+  }
+
+  void _handleRefresh() {
     _loadData();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool refreshUser = true}) async {
+    // Refresh level/XP/streak (server-side apply_xp / touch_streak) alongside the wallet fetch
+    final Future<void> userRefresh = refreshUser
+        ? Provider.of<AuthState>(context, listen: false).refreshCurrentUser()
+        : Future<void>.value();
+
     try {
       final walletRes = await ApiClient().get('/wallet/me');
       final wallet = walletRes.data;
 
-      // Optionally load missions count
-      int missionsCount = 0;
+      // Optionally load the count of chores ready to do (status-filtered, so it is not capped by the
+      // newest-50 page and does not count submitted items or redemption requests)
+      int? missionsCount;
       try {
-        final missionsRes = await ApiClient().get('/missions/mine');
+        final missionsRes = await ApiClient().get(
+          ApiConfig.missionsMine,
+          queryParameters: {'status': 'pending', 'limit': 100},
+        );
         final mList = missionsRes.data as List? ?? [];
-        missionsCount = mList.where((m) => m['status'] == 'pending' || m['status'] == 'submitted').length;
+        missionsCount = mList.where((m) => (m['kind'] ?? 'chore') == 'chore' && m['status'] == 'pending').length;
       } catch (_) {}
 
       final goals = (wallet['savings_goals'] as List?) ?? [];
@@ -48,10 +73,10 @@ class _ChildHomeScreenState extends State<ChildHomeScreen> {
       setState(() {
         _balance = (wallet['balance'] as num?)?.toDouble() ?? 0.0;
         _cardNumber = wallet['card_number'] ?? '5061 •••• •••• 1234';
-        _activeMissionsCount = missionsCount;
-        if (goals.isNotEmpty) {
-          _firstGoalName = goals.first['name'];
-        }
+        // Keep the previous count if only the missions request failed
+        if (missionsCount != null) _activeMissionsCount = missionsCount;
+        // Clear the name when the last goal was deleted
+        _firstGoalName = goals.isNotEmpty ? goals.first['name']?.toString() : null;
         _errorMessage = null;
       });
     } catch (e) {
@@ -60,13 +85,15 @@ class _ChildHomeScreenState extends State<ChildHomeScreen> {
         _errorMessage = ApiErrorHandler.getErrorMessage(e);
       });
     }
+    // refreshCurrentUser never throws (keeps the old state on failure)
+    await userRefresh;
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthState>(context);
     final childName = auth.user?['full_name'] ?? 'بطل مالي';
-    final String avatar = auth.user?['avatar'] ?? '👦';
+    final String avatar = (auth.user?['avatar'] ?? auth.user?['avatar_url'] ?? '👦').toString();
     final int level = (auth.user?['level'] as num?)?.toInt() ?? 1;
     final int xp = (auth.user?['xp'] as num?)?.toInt() ?? 0;
     final int streak = (auth.user?['streak'] as num?)?.toInt() ?? 1;

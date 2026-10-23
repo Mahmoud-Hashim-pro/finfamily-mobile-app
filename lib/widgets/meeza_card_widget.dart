@@ -143,6 +143,10 @@ class _MeezaCardWidgetState extends State<MeezaCardWidget>
   }
 
   Widget _buildCardFront() {
+    // A deactivated card must never look usable, whatever the value of showControls
+    final isDeactivated = widget.card.isDeactivated;
+    final isInactive = widget.card.isFrozen || isDeactivated;
+
     return Container(
       width: double.infinity,
       height: 215,
@@ -152,13 +156,13 @@ class _MeezaCardWidgetState extends State<MeezaCardWidget>
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: widget.card.isFrozen
+          colors: isInactive
               ? [const Color(0xFF475569), const Color(0xFF1E293B)]
               : [const Color(0xFF0F2D52), const Color(0xFF1E40AF), const Color(0xFF0D9488)],
         ),
         boxShadow: [
           BoxShadow(
-            color: (widget.card.isFrozen ? Colors.black : const Color(0xFF0F2D52))
+            color: (isInactive ? Colors.black : const Color(0xFF0F2D52))
                 .withOpacity(0.35),
             blurRadius: 18,
             offset: const Offset(0, 10),
@@ -217,7 +221,31 @@ class _MeezaCardWidgetState extends State<MeezaCardWidget>
                       ),
                     ],
                   ),
-                  if (widget.card.isFrozen)
+                  if (isDeactivated)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.coral,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.block, size: 12, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text(
+                            'ملغي',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (widget.card.isFrozen)
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 4),
@@ -289,25 +317,30 @@ class _MeezaCardWidgetState extends State<MeezaCardWidget>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'حامل الكارت',
-                        style: TextStyle(color: Colors.white54, fontSize: 10),
-                      ),
-                      Text(
-                        widget.card.cardholderName.isNotEmpty
-                            ? widget.card.cardholderName
-                            : 'FinFamily Member',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'حامل الكارت',
+                          style: TextStyle(color: Colors.white54, fontSize: 10),
                         ),
-                      ),
-                    ],
+                        Text(
+                          widget.card.cardholderName.isNotEmpty
+                              ? widget.card.cardholderName
+                              : 'FinFamily Member',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

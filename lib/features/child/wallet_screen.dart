@@ -1,11 +1,74 @@
 import 'package:flutter/material.dart';
 import '../../config/theme.dart';
+import '../../config/api_config.dart';
 import '../../core/api_client.dart';
+import '../../core/date_utils.dart';
 import '../../core/error_handler.dart';
 import 'goals_screen.dart';
 
+/// Card purchase categories (same labels as the parent's spending limits screen).
+const Map<String, String> _purchaseCategoryLabels = {
+  'Gaming': 'ألعاب الفيديو والشحن الإلكتروني 🎮',
+  'Food': 'الوجبات السريعة والمطاعم 🍔',
+  'Shopping': 'المشتريات والتسوق أونلاين 🛍️',
+  'Entertainment': 'السينما والترفيه 🎬',
+  'Electronics': 'الأجهزة الإلكترونية والتقنية 📱',
+  'Toys': 'الألعاب والدمى 🧸',
+};
+
+/// Non-card spending, bucketed by transaction type.
+const Map<String, String> _debitTypeLabels = {
+  'redemption': 'مكافآت مصروفة 🏆',
+  'adjustment': 'تعديلات ⚖️',
+};
+
+/// This month's spending per category (label → amount, rounded to piastres).
+/// - Completed card purchases (/card/purchases/mine) are grouped by their real category.
+/// - Other debits from /transactions/mine are grouped by type, excluding savings_transfer (the child's own
+///   saving, not spending) and card_purchase (already counted from the purchases list).
+/// Server timestamps are naive UTC and are converted to local time before the month check.
+@visibleForTesting
+Map<String, double> computeMonthlySpending(
+  List<dynamic> transactions,
+  List<dynamic> purchases, {
+  DateTime? now,
+}) {
+  final localNow = (now ?? DateTime.now()).toLocal();
+  bool inThisMonth(Object? raw) {
+    final dt = parseServerDateTime(raw);
+    return dt != null && dt.year == localNow.year && dt.month == localNow.month;
+  }
+
+  final Map<String, double> sums = {};
+  void add(String label, Object? amount) {
+    final amt = (amount as num?)?.toDouble() ?? 0.0;
+    if (amt <= 0) return;
+    sums[label] = double.parse(((sums[label] ?? 0.0) + amt).toStringAsFixed(2));
+  }
+
+  for (final p in purchases) {
+    if (p is! Map) continue;
+    if (p['status']?.toString() != 'completed') continue;
+    if (!inThisMonth(p['created_date'])) continue;
+    add(_purchaseCategoryLabels[p['category']?.toString()] ?? 'أخرى', p['amount']);
+  }
+
+  for (final t in transactions) {
+    if (t is! Map) continue;
+    if (t['direction']?.toString() != 'debit') continue;
+    final type = t['type']?.toString() ?? '';
+    if (type == 'savings_transfer' || type == 'card_purchase') continue;
+    if (!inThisMonth(t['created_date'])) continue;
+    add(_debitTypeLabels[type] ?? 'أخرى', t['amount']);
+  }
+  return sums;
+}
+
 class WalletScreen extends StatefulWidget {
-  const WalletScreen({super.key});
+  const WalletScreen({super.key, this.refreshSignal});
+
+  /// Bumped by ChildNavShell when this tab is reopened, so the IndexedStack tab refetches.
+  final ValueNotifier<int>? refreshSignal;
 
   @override
   State<WalletScreen> createState() => _WalletScreenState();
@@ -23,6 +86,17 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   void initState() {
     super.initState();
+    widget.refreshSignal?.addListener(_handleRefresh);
+    _loadWallet();
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal?.removeListener(_handleRefresh);
+    super.dispose();
+  }
+
+  void _handleRefresh() {
     _loadWallet();
   }
 
@@ -37,55 +111,55 @@ class _WalletScreenState extends State<WalletScreen> {
       final data = res.data;
       final goals = (data['savings_goals'] as List?) ?? [];
 
-      List<dynamic> txList = [];
+      // Spending sources (null = request failed: keep the previously shown breakdown)
+      List<dynamic>? txList;
+      List<dynamic>? purchaseList;
       try {
-        final txRes = await ApiClient().get('/transactions/mine');
-        txList = (txRes.data as List?) ?? [];
+        final results = await Future.wait([
+          ApiClient().get(ApiConfig.transactionsMine, queryParameters: {'limit': 100}),
+          ApiClient().get(ApiConfig.cardPurchasesMine),
+        ]);
+        txList = (results[0].data as List?) ?? [];
+        purchaseList = (results[1].data as List?) ?? [];
       } catch (_) {}
 
-      final Map<String, double> categorySums = {};
-      for (var t in txList) {
-        if (t is Map) {
-          final direction = t['direction']?.toString();
-          if (direction == 'debit') {
-            final cat = t['category']?.toString() ?? 'أخرى';
-            final amt = (t['amount'] as num?)?.toDouble() ?? 0.0;
-            categorySums[cat] = (categorySums[cat] ?? 0.0) + amt;
-          }
-        }
-      }
+      List<Map<String, dynamic>>? calculated;
+      if (txList != null && purchaseList != null) {
+        final categorySums = computeMonthlySpending(txList, purchaseList);
 
-      final List<Map<String, dynamic>> calculated = [];
-      final colors = [AppTheme.gold, AppTheme.emerald, AppTheme.navy, AppTheme.blue, AppTheme.purple, AppTheme.coral];
-      int colorIdx = 0;
-      categorySums.forEach((cat, amt) {
-        calculated.add({
-          'name': cat,
-          'amount': amt,
-          'color': colors[colorIdx % colors.length],
+        final List<Map<String, dynamic>> rows = [];
+        final colors = [AppTheme.gold, AppTheme.emerald, AppTheme.navy, AppTheme.blue, AppTheme.purple, AppTheme.coral];
+        int colorIdx = 0;
+        categorySums.forEach((cat, amt) {
+          rows.add({
+            'name': cat,
+            'amount': amt,
+            'color': colors[colorIdx % colors.length],
+          });
+          colorIdx++;
         });
-        colorIdx++;
-      });
-      calculated.sort((a, b) => (b['amount'] as double).compareTo(a['amount'] as double));
-
-      final bool isEstimated = calculated.isEmpty;
-      final List<Map<String, dynamic>> finalCategories = calculated.isNotEmpty
-          ? calculated
-          : [
-              {'name': 'أكل وكانتين 🍔', 'amount': 0.0, 'color': AppTheme.gold},
-              {'name': 'سوبرماركت 🛒', 'amount': 0.0, 'color': AppTheme.emerald},
-              {'name': 'ألعاب وترفيه 🎮', 'amount': 0.0, 'color': AppTheme.navy},
-            ];
+        rows.sort((a, b) => (b['amount'] as double).compareTo(a['amount'] as double));
+        calculated = rows;
+      }
 
       if (!mounted) return;
       setState(() {
         _walletBalance = (data['balance'] as num?)?.toDouble() ?? 0.0;
         _savingsBalance = (data['savings_balance'] as num?)?.toDouble() ?? 0.0;
-        if (goals.isNotEmpty) {
-          _firstGoalName = goals.first['name'];
+        // Clear the name when the last goal was deleted
+        _firstGoalName = goals.isNotEmpty ? goals.first['name']?.toString() : null;
+        // On a failed spending fetch keep the previous breakdown (placeholders only on the very first load)
+        if (calculated != null || _categories.isEmpty) {
+          final fresh = calculated ?? <Map<String, dynamic>>[];
+          _isCategoriesEstimated = fresh.isEmpty;
+          _categories = fresh.isNotEmpty
+              ? fresh
+              : [
+                  {'name': 'أكل وكانتين 🍔', 'amount': 0.0, 'color': AppTheme.gold},
+                  {'name': 'سوبرماركت 🛒', 'amount': 0.0, 'color': AppTheme.emerald},
+                  {'name': 'ألعاب وترفيه 🎮', 'amount': 0.0, 'color': AppTheme.navy},
+                ];
         }
-        _categories = finalCategories;
-        _isCategoriesEstimated = isEstimated;
         _errorMessage = null;
       });
     } catch (e) {
@@ -166,7 +240,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              '${_walletBalance.toStringAsFixed(1)} ج.م',
+                              '${_walletBalance.toStringAsFixed(2)} ج.م',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 20,
@@ -197,7 +271,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              '${_savingsBalance.toStringAsFixed(1)} ج.م',
+                              '${_savingsBalance.toStringAsFixed(2)} ج.م',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 20,
@@ -321,7 +395,7 @@ class _WalletScreenState extends State<WalletScreen> {
                                   ),
                                 ),
                                 Text(
-                                  '${cat['amount']} ج.م (${(ratio * 100).toInt()}%)',
+                                  '${(cat['amount'] as double).toStringAsFixed(2)} ج.م (${(ratio * 100).toInt()}%)',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 13,

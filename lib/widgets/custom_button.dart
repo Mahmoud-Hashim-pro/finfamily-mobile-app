@@ -46,6 +46,10 @@ class CustomButton extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: backgroundColor ?? AppTheme.navy,
           foregroundColor: textColor ?? Colors.white,
+          // Keep the brand/caller color while disabled (loading), otherwise the white spinner
+          // and label land on Material 3's near-white disabled background and become invisible
+          disabledBackgroundColor: backgroundColor ?? AppTheme.navy,
+          disabledForegroundColor: textColor ?? Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 2,
         ),

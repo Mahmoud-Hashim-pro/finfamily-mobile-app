@@ -8,6 +8,7 @@ import '../../config/theme.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../child/child_nav_shell.dart';
+import 'auth_input_utils.dart';
 
 class ChildLoginScreen extends StatefulWidget {
   const ChildLoginScreen({super.key});
@@ -33,7 +34,7 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
   }
 
   Future<void> _lookupFamily() async {
-    final code = _familyCodeController.text.trim().toUpperCase();
+    final code = normalizeArabicDigits(_familyCodeController.text.trim()).toUpperCase();
     if (code.length != 6) {
       setState(() => _error = 'يرجى كتابة كود العائلة المكون من 6 خانات بالضبط');
       return;
@@ -74,15 +75,16 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
 
   Future<void> _handleChildLogin() async {
     if (_selectedChild == null) return;
-    final pin = _pinController.text.trim();
-    if (pin.length != 6 || int.tryParse(pin) == null) {
+    // Arabic-Indic digits (٠-٩) are mapped to ASCII before validating and sending the PIN
+    final pin = normalizeNumericCode(_pinController.text);
+    if (!isSixDigitCode(pin)) {
       setState(() => _error = 'رمز PIN يجب أن يتكون من 6 أرقام');
       return;
     }
 
     final auth = Provider.of<AuthState>(context, listen: false);
     final success = await auth.loginChild(
-      _familyCodeController.text.trim(),
+      normalizeArabicDigits(_familyCodeController.text.trim()),
       _selectedChild!['id'],
       pin,
     );
@@ -244,10 +246,11 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              c['avatar'] ?? '👦',
+                              childAvatarOf(c),
                               style: const TextStyle(fontSize: 38),
                             ),
                             const SizedBox(height: 8),
+                            // The public lookup intentionally exposes no level (privacy), so none is shown here
                             Text(
                               c['full_name'] ?? 'بطل مالي',
                               maxLines: 1,
@@ -255,14 +258,6 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 15,
-                              ),
-                            ),
-                            Text(
-                              'Level ${c['level'] ?? 1}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppTheme.emeraldDark,
-                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
@@ -279,7 +274,7 @@ class _ChildLoginScreenState extends State<ChildLoginScreen> {
                     Row(
                       children: [
                         Text(
-                          _selectedChild!['avatar'] ?? '👦',
+                          childAvatarOf(_selectedChild),
                           style: const TextStyle(fontSize: 28),
                         ),
                         const SizedBox(width: 8),

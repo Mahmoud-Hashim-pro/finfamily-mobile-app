@@ -66,14 +66,28 @@ class CustomTextField extends StatelessWidget {
   }
 }
 
+/// Converts Arabic-Indic / Persian digits to ASCII and normalizes separators for parsing (C6):
+/// `1,000` -> `1000`, `1,500.25` -> `1500.25`, `١٬٥٠٠` -> `1500`, `٢٫٥` -> `2.5`,
+/// while a lone comma used as a decimal mark keeps working: `12,5` -> `12.5`.
 String normalizeArabicDigits(String input) {
   const arabicIndic = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
   const easternArabic = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
-  var result = input.replaceAll('٫', '.').replaceAll('،', '.').replaceAll(',', '.');
+  var result = input;
   for (int i = 0; i < 10; i++) {
     result = result.replaceAll(arabicIndic[i], i.toString());
     result = result.replaceAll(easternArabic[i], i.toString());
   }
-  return result;
+
+  // '٬' (U+066C) is always the Arabic thousands separator
+  result = result.replaceAll('٬', '');
+
+  // Commas grouping exactly three digits are thousands separators, not a decimal point
+  final grouped = RegExp(r'^[-+]?[1-9]\d{0,2}([,،]\d{3})+([.٫]\d+)?$');
+  final trimmed = result.trim();
+  if (grouped.hasMatch(trimmed)) {
+    return trimmed.replaceAll(',', '').replaceAll('،', '').replaceAll('٫', '.');
+  }
+
+  return result.replaceAll('٫', '.').replaceAll('،', '.').replaceAll(',', '.');
 }
 
