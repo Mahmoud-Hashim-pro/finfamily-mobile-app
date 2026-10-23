@@ -649,7 +649,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> with Single
                             Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
-                                if (isFrozen)
+                                if (status == 'deactivated')
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    child: Text('كارت ملغي نهائياً ⛔', style: TextStyle(color: Colors.white38, fontSize: 12, fontWeight: FontWeight.bold)),
+                                  )
+                                else if (isFrozen)
                                   ElevatedButton.icon(
                                     onPressed: () => _updateCardStatus(card['wallet_id'], 'active', card['child_name']),
                                     icon: const Icon(Icons.lock_open, size: 14),

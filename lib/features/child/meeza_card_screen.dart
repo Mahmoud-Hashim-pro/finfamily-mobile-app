@@ -291,18 +291,20 @@ class _MeezaCardScreenState extends State<MeezaCardScreen> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 10),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: LinearProgressIndicator(
-                                value: ratio,
-                                minHeight: 8,
-                                backgroundColor: const Color(0xFFE2E8F0),
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  ratio > 0.85 ? AppTheme.coral : AppTheme.emerald,
+                            if (!usageUnknown) ...[
+                              const SizedBox(height: 10),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: LinearProgressIndicator(
+                                  value: ratio,
+                                  minHeight: 8,
+                                  backgroundColor: const Color(0xFFE2E8F0),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    ratio > 0.85 ? AppTheme.coral : AppTheme.emerald,
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                             const SizedBox(height: 8),
                             Text(
                               usageUnknown

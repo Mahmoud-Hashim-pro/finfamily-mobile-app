@@ -214,16 +214,21 @@ class _GoalsScreenState extends State<GoalsScreen> {
           // No back/barrier dismissal while the withdrawal is in flight
           canPop: !isSubmitting,
           child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text('سحب من "${g.name}" ↩️', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'الرصيد المتوفر في الهدف: ${g.current.toStringAsFixed(2)} ج.م',
-                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
-              ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Text('سحب من "${g.name}" ↩️', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Builder(
+                  builder: (_) {
+                    final liveAmount = (index < _goals.length && _goals[index].id == g.id) ? _goals[index].current : g.current;
+                    return Text(
+                      'الرصيد المتوفر في الهدف: ${liveAmount.toStringAsFixed(2)} ج.م',
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                    );
+                  },
+                ),
               const SizedBox(height: 12),
               TextField(
                 controller: amountController,

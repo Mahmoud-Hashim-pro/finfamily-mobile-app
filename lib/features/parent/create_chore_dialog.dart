@@ -27,6 +27,7 @@ class CreateChoreDialog extends StatefulWidget {
   static Future<void> show(BuildContext context, {List<dynamic>? preloadedChildren, VoidCallback? onChoreCreated}) {
     return showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => CreateChoreDialog(
         preloadedChildren: preloadedChildren,
         onChoreCreated: onChoreCreated,
@@ -152,7 +153,10 @@ class _CreateChoreDialogState extends State<CreateChoreDialog> {
       // Single call: any failure (422/400/5xx/timeout) is shown as-is by the catch below
       await ApiClient().post(ApiConfig.missionsCreate, data: payload);
 
-      if (!mounted) return;
+      if (!mounted) {
+        widget.onChoreCreated?.call();
+        return;
+      }
       Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -174,7 +178,9 @@ class _CreateChoreDialogState extends State<CreateChoreDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return PopScope(
+      canPop: !_isSubmitting,
+      child: Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       backgroundColor: Colors.white,
       child: SingleChildScrollView(
@@ -379,6 +385,6 @@ class _CreateChoreDialogState extends State<CreateChoreDialog> {
           ],
         ),
       ),
-    );
+    ));
   }
 }

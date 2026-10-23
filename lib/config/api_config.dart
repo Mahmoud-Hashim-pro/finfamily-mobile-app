@@ -18,8 +18,8 @@ class ApiConfig {
   // App Version & Release Configuration (FF-05 & FF-31)
   // Release CI passes --dart-define=APP_VERSION/APP_BUILD_NUMBER from pubspec.yaml.
   // These defaults MUST be bumped together with pubspec.yaml `version:` (CI and tests fail on drift).
-  static const String currentAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.1.7');
-  static const int currentAppBuildNumber = int.fromEnvironment('APP_BUILD_NUMBER', defaultValue: 15);
+  static const String currentAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.1.8');
+  static const int currentAppBuildNumber = int.fromEnvironment('APP_BUILD_NUMBER', defaultValue: 16);
 
   // Auth endpoints
   static const String parentRegister = '/auth/register';

@@ -132,7 +132,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
 
       // 2. Fetch submitted missions
       try {
-        final missionsRes = await ApiClient().get('/missions/family?status=submitted');
+        final missionsRes = await ApiClient().get('/missions/family?status=submitted&limit=100');
         final rawMissions = (missionsRes.data is List) ? missionsRes.data as List : [];
         for (var m in rawMissions) {
           if (m is Map) {
@@ -505,6 +505,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                                   ),
                                 )
                               : ListView.separated(
+                                  padding: const EdgeInsets.only(bottom: 84),
                                   physics: const AlwaysScrollableScrollPhysics(),
                                   itemCount: filteredList.length,
                                   separatorBuilder: (_, __) => const SizedBox(height: 14),

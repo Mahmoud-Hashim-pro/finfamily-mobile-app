@@ -461,7 +461,9 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Padding(
+        builder: (ctx, setSheetState) => PopScope(
+          canPop: !isSubmitting,
+          child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -556,7 +558,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
               const SizedBox(height: 16),
             ],
           ),
-        ),
+        )),
       ),
     );
   }
@@ -592,7 +594,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
         balance: newBalance,
       );
 
-      if (sheetContext.mounted) {
+      if (sheetContext.mounted && Navigator.of(sheetContext).canPop()) {
         Navigator.pop(sheetContext);
       }
 
@@ -616,7 +618,7 @@ class _LearnScreenState extends State<LearnScreen> with SingleTickerProviderStat
         ),
       );
     } catch (e) {
-      if (sheetContext.mounted) {
+      if (sheetContext.mounted && Navigator.of(sheetContext).canPop()) {
         Navigator.pop(sheetContext);
       }
       if (!mounted) return;

@@ -342,10 +342,12 @@ class _AllowanceScreenState extends State<AllowanceScreen> {
                           onTap: _isSending
                               ? null
                               : () {
-                                  setState(() {
-                                    _selectedChildId = childId;
-                                    _currentAllowanceIdempotencyKey = null;
-                                  });
+                                  if (_selectedChildId != childId) {
+                                    setState(() {
+                                      _selectedChildId = childId;
+                                      _currentAllowanceIdempotencyKey = null;
+                                    });
+                                  }
                                 },
                           child: Container(
                             margin: const EdgeInsets.symmetric(horizontal: 4),
