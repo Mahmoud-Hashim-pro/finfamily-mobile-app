@@ -345,7 +345,92 @@ class _MissionsScreenState extends State<MissionsScreen> {
                       label: const Text('طلب استبدال 🏆', style: TextStyle(color: AppTheme.emerald, fontWeight: FontWeight.bold, fontSize: 13)),
                     ),
                   ],
-                )
+                ),
+                const SizedBox(height: 16),
+                if (_isLoading)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: CircularProgressIndicator(color: AppTheme.emerald),
+                    ),
+                  )
+                else if (_errorMessage != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.red.shade100),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.error_outline, size: 44, color: Colors.redAccent),
+                        const SizedBox(height: 12),
+                        Text(
+                          _errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 13, color: AppTheme.navy, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _loadMissions,
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('إعادة المحاولة'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.emerald,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_missions.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(28),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.cardBorder),
+                    ),
+                    child: const Column(
+                      children: [
+                        Text('🎉', style: TextStyle(fontSize: 40)),
+                        SizedBox(height: 12),
+                        Text(
+                          'لا توجد مهام حالية مخصصة لك',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.navy,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'اطلب من بابا أو ماما إضافة مهمة منزلية جديدة لتحصل على مكافأة في كارتك!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _missions.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final m = _missions[index];
+
+                      Color badgeColor;
+                      String statusText;
+                      Color textColor;
+
+                      switch (m.status) {
+                        case 'approved':
+                          badgeColor = AppTheme.emerald.withOpacity(0.15);
                           textColor = AppTheme.emeraldDark;
                           statusText = m.isRedemption ? 'تمت الموافقة على طلب الصرف ✅' : 'تمت الموافقة وصرف المكافأة ✅';
                           break;

@@ -536,11 +536,11 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                               );
                             },
                             icon: const Icon(Icons.copy, color: AppTheme.gold),
+                          ),
                           IconButton(
                             tooltip: 'تغيير كود العائلة',
                             onPressed: _confirmRotateFamilyCode,
                             icon: const Icon(Icons.autorenew, color: Colors.white70),
-                          ),
                           ),
                         ],
                       ),

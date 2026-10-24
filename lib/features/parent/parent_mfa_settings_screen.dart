@@ -1039,6 +1039,10 @@ class _ParentMfaSettingsScreenState extends State<ParentMfaSettingsScreen> {
                                   onPressed: _disableMfa,
                                 ),
                               ],
+                            ),
+                          ),
+                        ],
+
                         const SizedBox(height: 24),
                         // Danger Zone: Delete Account
                         Container(
@@ -1079,9 +1083,6 @@ class _ParentMfaSettingsScreenState extends State<ParentMfaSettingsScreen> {
                             ],
                           ),
                         ),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ),

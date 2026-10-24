@@ -318,8 +318,7 @@ class _FamilyCardsScreenState extends State<FamilyCardsScreen> {
                                          ),
                                        ),
                                      ),
-                                     const SizedBox(width: 8)
-                                    ),
+                                      const SizedBox(width: 8),
                                     Container(
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 10, vertical: 4),
